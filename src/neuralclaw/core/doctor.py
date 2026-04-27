@@ -9,6 +9,7 @@ from neuralclaw.db.connection import (
     get_vault_key_path, get_db_path, get_config_dir
 )
 from neuralclaw.core.fresh import list_fresh_apples
+from neuralclaw.plugins import run_doctor_check_hooks
 
 
 class CheckResult(NamedTuple):
@@ -39,6 +40,18 @@ def run_doctor_checks() -> tuple[list[CheckResult], int, int]:
 
     # 6. usage_logs empty for 30+ days
     results.append(_check_usage_logs(now))
+
+    # Run plugin doctor check hooks
+    try:
+        plugin_checks = run_doctor_check_hooks()
+        for pc in plugin_checks:
+            results.append(CheckResult(
+                status=pc.get("status", "warn"),
+                label=f"[plugin] {pc.get('check', 'unknown')}",
+                detail=pc.get("message", ""),
+            ))
+    except Exception:
+        pass  # Don't fail doctor if plugins fail
 
     pass_count = sum(1 for r in results if r.status == "pass")
     total = len(results)

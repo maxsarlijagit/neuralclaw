@@ -69,12 +69,10 @@ class TestListProjects:
 
     def test_list_sorted_by_updated(self, fresh_db):
         """Newer projects should appear first."""
-        import time
         create_project("first")
-        time.sleep(0.01)  # Small delay to ensure different timestamps
         create_project("second")
         projects = list_projects()
-        # Second should be first since it has newer updated_at
+        # Should be sorted by updated_at DESC - second created last so first
         assert projects[0]["name"] == "second"
 
 
