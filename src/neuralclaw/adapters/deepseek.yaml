@@ -1,0 +1,17 @@
+model: deepseek
+name: DeepSeek
+context_format:
+  prepend: "## NeuralClaw Context\n"
+  append: "\n---\n*Served by NeuralClaw — flag any stale or conflicting items*"
+max_tokens: 64000
+supports_system: true
+supports_functions: true
+reveal_vars: false
+preferences:
+  length: medium
+  style: direct
+  markdown: true
+constraints:
+  - "Only use information marked as verified or active"
+  - "Flag any item marked as stale or conflicting"
+  - "DeepSeek R1 reasoning model — show your chain of thought for complex tasks"

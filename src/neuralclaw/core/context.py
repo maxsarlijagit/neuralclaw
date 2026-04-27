@@ -3,6 +3,7 @@
 import uuid
 import json
 import time
+import sqlite3
 from typing import Any
 
 from neuralclaw.db.connection import get_connection
@@ -19,24 +20,114 @@ def add_context_item(
     stale_after: int | None = None,
     confidence: float = 1.0,
 ) -> str:
-    """Add a new context item."""
+    """Add a new context item.
+
+    On conflict (same project_id + key):
+    - If value is identical: no-op (idempotent)
+    - If value is different: mark BOTH old and new as 'conflicting'
+    """
     item_id = str(uuid.uuid4())
     now = int(time.time())
 
     with get_connection() as conn:
+        # Check for existing item with same key (for conflict detection)
+        # Use NULL-safe comparison: (project_id = ? OR (project_id IS NULL AND ? IS NULL))
+        null_safe_clause = (
+            f"(project_id = ? OR (project_id IS NULL AND ? IS NULL))"
+            if project_id is None
+            else "project_id = ?"
+        )
+        if project_id is None:
+            existing = conn.execute(
+                f"SELECT id, value, state FROM context_items WHERE {null_safe_clause} AND key = ?",
+                (project_id, project_id, key)
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                f"SELECT id, value, state FROM context_items WHERE {null_safe_clause} AND key = ?",
+                (project_id, key)
+            ).fetchone()
+
+        if existing:
+            existing_value = existing["value"]
+            existing_id = existing["id"]
+            if existing_value != value:
+                # Different value for same key → CONFLICT
+                # Mark existing as conflicting
+                conn.execute(
+                    "UPDATE context_items SET state = 'conflicting', updated_at = ? WHERE id = ?",
+                    (now, existing_id)
+                )
+                # Insert new one as conflicting too (separate transaction to avoid UNIQUE conflict)
+                # Use INSERT OR IGNORE then UPDATE, or just do a raw insert
+                try:
+                    conn.execute("""
+                        INSERT INTO context_items
+                        (id, project_id, key, value, type, state, tags, sources, created_at, updated_at, stale_after, confidence)
+                        VALUES (?, ?, ?, ?, ?, 'conflicting', ?, ?, ?, ?, ?, ?)
+                    """, (
+                        item_id,
+                        project_id,
+                        key,
+                        value,
+                        item_type,
+                        json.dumps(tags or []),
+                        json.dumps(sources or []),
+                        now,
+                        now,
+                        stale_after,
+                        confidence,
+                    ))
+                except sqlite3.IntegrityError:
+                    # Item already exists and was marked conflicting by another call — update it
+                    conn.execute("""
+                        UPDATE context_items SET value = ?, type = ?, state = 'conflicting',
+                        tags = ?, sources = ?, updated_at = ?, stale_after = ?, confidence = ?
+                        WHERE project_id IS ? AND key = ?
+                    """, (
+                        value, item_type,
+                        json.dumps(tags or []), json.dumps(sources or []),
+                        now, stale_after, confidence,
+                        project_id, key,
+                    ))
+                    item_id = existing_id  # already exists as conflicting
+                return item_id
+            else:
+                # Same value — idempotent update, preserve existing state (don't un-conflict)
+                existing_state = existing["state"]
+                conn.execute("""
+                    INSERT INTO context_items
+                    (id, project_id, key, value, type, state, tags, sources, created_at, updated_at, stale_after, confidence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(project_id, key) DO UPDATE SET
+                        value = excluded.value,
+                        type = excluded.type,
+                        tags = excluded.tags,
+                        sources = excluded.sources,
+                        updated_at = excluded.updated_at,
+                        stale_after = excluded.stale_after,
+                        confidence = excluded.confidence
+                """, (
+                    item_id,
+                    project_id,
+                    key,
+                    value,
+                    item_type,
+                    existing_state,  # preserve existing state (e.g. don't un-conflict)
+                    json.dumps(tags or []),
+                    json.dumps(sources or []),
+                    now,
+                    now,
+                    stale_after,
+                    confidence,
+                ))
+                return existing_id
+
+        # No conflict — regular insert
         conn.execute("""
             INSERT INTO context_items
             (id, project_id, key, value, type, state, tags, sources, created_at, updated_at, stale_after, confidence)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(project_id, key) DO UPDATE SET
-                value = excluded.value,
-                type = excluded.type,
-                state = excluded.state,
-                tags = excluded.tags,
-                sources = excluded.sources,
-                updated_at = excluded.updated_at,
-                stale_after = excluded.stale_after,
-                confidence = excluded.confidence
         """, (
             item_id,
             project_id,
@@ -90,11 +181,17 @@ def search_context(
         rows = conn.execute(" ".join(sql_parts), params).fetchall()
 
     results = []
+    now = int(time.time())
     for row in rows:
         r = dict(row)
         # Parse JSON fields
         r["tags"] = json.loads(r["tags"]) if r["tags"] else []
         r["sources"] = json.loads(r["sources"]) if r["sources"] else []
+        # Stale detection: flag items past their TTL
+        if r.get("stale_after") and r["stale_after"] < now:
+            r["stale_warning"] = True
+        else:
+            r["stale_warning"] = False
         results.append(r)
 
     return results

@@ -1,8 +1,10 @@
 model: claude
 name: Claude
 context_format:
-  prepend: " |
-  append: " |
+  prepend: |
+    [CLAUDE CONTEXT]
+  append: |
+    [/CLAUDE CONTEXT]
 max_tokens: 200000
 supports_system: true
 supports_functions: true

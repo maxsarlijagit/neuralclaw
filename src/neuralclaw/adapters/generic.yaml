@@ -1,0 +1,16 @@
+model: generic
+name: Generic AI
+context_format:
+  prepend: "## Project Context\n"
+  append: ""
+max_tokens: 128000
+supports_system: true
+supports_functions: false
+reveal_vars: false
+preferences:
+  length: medium
+  style: direct
+  markdown: false
+constraints:
+  - "Only use verified or active context items"
+  - "Flag any stale or conflicting information"

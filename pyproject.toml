@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuralclaw"
-version = "0.1.0"
+version = "0.4.0"
 description = "Local Context OS for AI Agents"
 readme = "README.md"
 license = {text = "MIT"}
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["context", "memory", "ai", "agents", "local"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
@@ -35,12 +35,39 @@ dev = [
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
     "ruff>=0.3.0",
+    "click>=8.1.0",
 ]
+api = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "jinja2>=3.1.0",
+]
+tui = [
+    "rich>=13.7.0",
+]
+ollama = [
+    "requests>=2.31.0",
+]
+embeddings = [
+    "requests>=2.31.0",
+    "numpy>=1.26.0",
+]
+full = [
+    "requests>=2.31.0",
+    "numpy>=1.26.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.0",
+    "jinja2>=3.1.0",
+]
+
+[project.extras]
+all = ["neuralclaw[full]"]
 
 [project.scripts]
 neuralclaw = "neuralclaw.cli.main:app"
 
 [project.entry-points."neuralclaw.plugins"]
+audit = "neuralclaw.plugins.builtins.audit:hooks"
 
 [tool.setuptools.packages.find]
 where = ["src"]

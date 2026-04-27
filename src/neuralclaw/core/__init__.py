@@ -8,6 +8,13 @@ from neuralclaw.core.context import (
     delete_context_item,
     count_context_items,
 )
+from neuralclaw.core.search import (
+    search_context_smart,
+    search_context_fts,
+    search_context_embeddings,
+    search_context_keyword,
+    suggest_context,
+)
 from neuralclaw.core.vault import (
     vault_set,
     vault_get,
@@ -38,6 +45,11 @@ __all__ = [
     "update_context_item_state",
     "delete_context_item",
     "count_context_items",
+    "search_context_smart",
+    "search_context_fts",
+    "search_context_embeddings",
+    "search_context_keyword",
+    "suggest_context",
     "vault_set",
     "vault_get",
     "vault_list",

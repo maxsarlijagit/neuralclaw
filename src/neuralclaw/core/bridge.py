@@ -22,6 +22,8 @@ def load_adapter(adapter_name: str) -> dict[str, Any]:
     return yaml.safe_load(adapter_file.read_text())
 
 
+from neuralclaw.core import search as search_module
+
 def build_context_export(
     task: str,
     project_id: str | None = None,
@@ -33,13 +35,17 @@ def build_context_export(
     """Build a context export JSON for an AI agent."""
     adapter = load_adapter(adapter_name)
 
-    # Search relevant context
-    items = ctx_module.search_context(
+    # Search relevant context (use smart search with keyword method for export)
+    items = search_module.search_context_smart(
         query=query,
         project_id=project_id,
         state="active",
-        limit=100,
+        method="keyword",
+        limit=200,
     )
+
+    # Sort by relevance_score descending (if available)
+    items.sort(key=lambda x: x.get("relevance_score", 1.0), reverse=True)
 
     # Check for stale items
     now = int(time.time())

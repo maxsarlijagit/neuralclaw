@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS context_items (
     updated_at INTEGER NOT NULL,
     stale_after INTEGER,  -- Unix timestamp; NULL = never stale
     confidence REAL DEFAULT 1.0 CHECK(confidence >= 0.0 AND confidence <= 1.0),
+    relevance_score REAL DEFAULT 1.0 CHECK(relevance_score >= 0.0),
     UNIQUE(project_id, key)
 );
 
@@ -146,5 +147,18 @@ CREATE TRIGGER IF NOT EXISTS context_fts_update AFTER UPDATE ON context_items BE
     INSERT INTO context_fts(rowid, key, value) VALUES (new.rowid, new.key, new.value);
 END;
 
+-- Embeddings cache for semantic search
+CREATE TABLE IF NOT EXISTS embeddings_cache (
+    id TEXT PRIMARY KEY,
+    item_id TEXT REFERENCES context_items(id) ON DELETE CASCADE,
+    text_hash TEXT NOT NULL,  -- SHA256 of the text that was embedded
+    embedding BLOB NOT NULL,  -- Pickled numpy array or JSON list
+    created_at INTEGER NOT NULL,
+    UNIQUE(item_id, text_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_emb_item ON embeddings_cache(item_id);
+CREATE INDEX IF NOT EXISTS idx_emb_hash ON embeddings_cache(text_hash);
+
 -- Record schema version
-INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES ('0.1', unixepoch('now'));
+INSERT OR REPLACE INTO schema_version (version, applied_at) VALUES ('0.4.0', unixepoch('now'));

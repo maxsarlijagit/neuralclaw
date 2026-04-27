@@ -34,7 +34,7 @@
 
 ---
 
-### Fase 2: Proyectos + Estados + Ranking
+### Fase 2: Proyectos + Estados + Ranking — ✅ IMPLEMENTED
 **Alcance:**
 - Estados completos (8 estados)
 - Stale detection con TTL configurable

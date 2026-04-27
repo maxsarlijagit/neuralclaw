@@ -1,5 +1,9 @@
 # NeuralClaw
 
+[![Test](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml/badge.svg)](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml)
+[![PyPI Version](https://img.shields.io/pypi/v/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
+[![Python](https://img.shields.io/pypi/pyversions/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
+
 **Local Context OS for AI Agents**
 
 NeuralClaw es un sistema local para organizar memoria, contexto, proyectos, variables, errores, decisiones y preferencias de comunicación, entregando a cada IA/agente solo el contexto mínimo útil.
