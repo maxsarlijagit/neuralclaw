@@ -51,7 +51,11 @@ app = typer.Typer(
     name="neuralclaw",
     help="NeuralClaw — Local Context OS for AI Agents",
     add_completion=False,
+    invoke_without_command=True,
 )
+
+# Version from pyproject.toml
+__version__ = "0.4.1"
 
 # Sub-groups
 project_app = typer.Typer(name="project", help="Manage projects")
@@ -69,7 +73,24 @@ app.add_typer(playroom_app)
 console = Console()
 
 
-# ─── TUI ───────────────────────────────────────────────────────────────────────
+# ─── MAIN CALLBACK (--version) ────────────────────────────────────────────────
+
+@app.callback()
+def main(
+    version: bool = typer.Option(False, "--version", "-v", help="Show version and exit"),
+):
+    """NeuralClaw — Local Context OS for AI Agents."""
+    if version:
+        console.print(f"[cyan]NeuralClaw[/cyan] [bold]{__version__}[/bold]")
+        raise typer.Exit()
+
+
+# ─── VERSION SUB_COMMAND ──────────────────────────────────────────────────────
+
+@app.command(name="version")
+def version():
+    """Show NeuralClaw version."""
+    console.print(f"[cyan]NeuralClaw[/cyan] version [bold]{__version__}[/bold]")
 
 @app.command()
 def tui():

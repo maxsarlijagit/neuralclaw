@@ -4,7 +4,7 @@
 
 [![PyPI Version](https://img.shields.io/pypi/v/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
 [![Python](https://img.shields.io/pypi/pyversions/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/maxsarlija/neuralclaw/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml/badge.svg)](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml)
 
 ---
@@ -49,107 +49,61 @@ pipx install .
 pip install neuralclaw
 ```
 
-> **Note:** When installed via `pip install`, the `neuralclaw` command becomes globally available.
-
 ---
 
 ## First Run Setup
 
-On first run, NeuralClaw provides an **interactive setup wizard** to get you started:
+On first run, NeuralClaw provides an **interactive setup wizard**:
 
 ```bash
 neuralclaw init
 ```
 
-The wizard walks you through:
+The wizard guides you through 4 steps:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │           🤖 NeuralClaw First Run Setup                 │
 ├─────────────────────────────────────────────────────────┤
+│  Step 1: System Initialization                         │
+│           → Creates config, database, vault            │
 │                                                         │
-│  Step 1: Welcome                                         │
-│  ─────────────────────────────────────────────────────  │
-│  NeuralClaw needs to initialize your local context OS.  │
-│  This will create:                                       │
-│    • ~/.config/neuralclaw/ (config directory)           │
-│    • ~/.config/neuralclaw/neuralclaw.db (database)       │
-│    • ~/.config/neuralclaw/vault.key (encryption)        │
-│    • ~/.config/neuralclaw/vault/vault.db (secrets)      │
+│  Step 2: Create Your First Project                      │
+│           → Name and description                        │
 │                                                         │
-│  Press ENTER to continue...                             │
+│  Step 3: AI Adapter Selection                          │
+│           → OpenClaw, Claude, ChatGPT                  │
 │                                                         │
-├─────────────────────────────────────────────────────────┤
-│  Step 2: Create your first project                       │
-│  ─────────────────────────────────────────────────────  │
-│  Project name: █                                        │
+│  Step 4: Ollama Integration (Optional)                 │
+│           → Enable semantic search                     │
 │                                                         │
-│  Description (optional): █                              │
-│                                                         │
-│  Press ENTER to create...                               │
-│                                                         │
-├─────────────────────────────────────────────────────────┤
-│  Step 3: Configure your AI adapters                     │
-│  ─────────────────────────────────────────────────────  │
-│  Select which AI systems you use:                       │
-│                                                         │
-│    [x] OpenClaw    - Local agent framework              │
-│    [x] Claude       - Anthropic's Claude                 │
-│    [x] ChatGPT      - OpenAI's ChatGPT                  │
-│    [ ] LocalAI      - Self-hosted models                 │
-│    [ ] LM Studio    - Local model serving                │
-│                                                         │
-│  Press ENTER to continue...                             │
-│                                                         │
-├─────────────────────────────────────────────────────────┤
-│  Step 4: Optional Ollama integration                     │
-│  ─────────────────────────────────────────────────────  │
-│  Ollama provides local embeddings for semantic search.  │
-│  Do you want to enable it? (y/N): █                     │
-│                                                         │
-├─────────────────────────────────────────────────────────┤
-│                      ✅ Setup Complete!                  │
-│  ─────────────────────────────────────────────────────  │
-│  Database:     /home/user/.config/neuralclaw/          │
-│  Vault:        Encrypted (Fernet)                       │
-│  Projects:     1 (my-first-project)                     │
-│  Adapters:     OpenClaw, Claude, ChatGPT                │
-│                                                         │
-│  Next steps:                                           │
-│    • neuralclaw add "my_key=my_value"                   │
-│    • neuralclaw project list                            │
-│    • neuralclaw --help                                  │
-│                                                         │
+│                    ✅ Setup Complete!                   │
 └─────────────────────────────────────────────────────────┘
+```
+
+Use `--yes` or `-y` flag for non-interactive/automated setup:
+
+```bash
+neuralclaw init -y
 ```
 
 ---
 
-## Quick Start (Command Line)
+## Quick Start
 
-After installation, you can use NeuralClaw directly:
+Add your first context item:
 
 ```bash
-# Add a variable
 neuralclaw add "DATABASE_URL=postgres://localhost/mydb" --type variable --tags prod,database
-
-# Add a decision
 neuralclaw add "decision: use Redis for session cache" --project myapp --tags architecture
-
-# Add an error tracking item
-neuralclaw add "Error: timeout on /api/auth endpoint" --type error --tags auth,prod
+neuralclaw add "Error: timeout on /api/auth" --type error --tags auth,prod
 ```
 
-### Export Context for an AI Agent
+Export context for any AI agent:
 
 ```bash
-# For OpenClaw agents
 neuralclaw context --project myapp --task "implement login" --adapter openclaw
-
-# For Claude
 neuralclaw context --project myapp --task "code review" --adapter claude
-
-# For ChatGPT
 neuralclaw context --project myapp --task "write tests" --adapter chatgpt
 ```
 
@@ -157,14 +111,14 @@ neuralclaw context --project myapp --task "write tests" --adapter chatgpt
 
 ## Why NeuralClaw?
 
-When you're working with multiple AI agents across different tasks, each one needs different context. Sending everything to every agent is expensive and slow. Sending nothing means they start from scratch.
+When working with multiple AI agents, each needs different context. Sending everything to everyone is expensive. Sending nothing means they start from scratch.
 
 NeuralClaw solves this by:
 
-- **Centralizing** project context, decisions, and variables in one place
+- **Centralizing** project context, decisions, and variables
 - **Encrypting** secrets (API keys, tokens) safely in a local vault
 - **Routing** the right context to the right agent via adapters
-- **Staying local** — no cloud, no sync, no dependencies
+- **Staying local** — no cloud, no sync, no external dependencies
 
 ---
 
@@ -172,7 +126,7 @@ NeuralClaw solves this by:
 
 ### Projects
 
-Projects group context items together. Each project has its own namespace for variables, decisions, and errors.
+Projects group context items together:
 
 ```bash
 neuralclaw project create "backend-api"
@@ -183,7 +137,7 @@ neuralclaw project archive "old-project"
 
 ### Context Items
 
-Everything NeuralClaw stores is a **context item** with:
+Every piece of information stored is a **context item** with:
 
 | Field | Description |
 |-------|-------------|
@@ -197,8 +151,6 @@ Everything NeuralClaw stores is a **context item** with:
 
 ### States
 
-Context items have lifecycle states:
-
 | State | Include in exports? | Action |
 |-------|---------------------|--------|
 | `active` | ✅ By default | Use normally |
@@ -211,7 +163,7 @@ Context items have lifecycle states:
 
 ### Vault
 
-The vault stores **encrypted secrets** — API keys, tokens, passwords. Values are encrypted with Fernet (symmetric encryption) and never exposed unless explicitly requested.
+Encrypted secret storage — values encrypted with Fernet, never exposed unless requested:
 
 ```bash
 neuralclaw vault set OPENAI_API_KEY "sk-..."
@@ -225,7 +177,7 @@ neuralclaw vault delete OLD_API_KEY
 ## Commands Overview
 
 ```
-init           Initialize NeuralClaw: config, database, vault (interactive wizard)
+init           Initialize NeuralClaw (interactive wizard)
 add            Add a context item (key=value format)
 search         Search context items with filters
 context        Export context as JSON for an AI agent
@@ -275,48 +227,18 @@ neuralclaw/
 │   │   ├── chatgpt.yaml
 │   │   └── claude.yaml
 │   ├── api/server.py        # FastAPI REST API
-│   └── ui/tui.py            # Text User Interface
+│   └── ui/
+│       ├── tui.py            # Text User Interface
+│       └── dashboard.py      # Web dashboard
 ├── tests/                   # 160 tests (all passing)
 ├── brain/                   # Decision log
 ├── SPEC.md                  # Design specification
 └── CHANGELOG.md
 ```
 
-### Database Schema
+### Database
 
-NeuralClaw uses SQLite with 10+ tables:
-
-- `projects` — project metadata
-- `context_items` — key-value context with types and states
-- `context_links` — relationships (supersedes, contradicts)
-- `errors` — error log per project
-- `decisions` — decision history with rationale
-- `usage_logs` — audit trail
-- `model_profiles` — communication profiles (Train Room)
-- `fresh_apple` — TTL-based snapshots
-- `vault_entries` — encrypted secret metadata
-- `schema_version` — migration tracking
-- `context_fts` — FTS5 full-text search virtual table
-- `embeddings_cache` — cached Ollama embeddings
-
----
-
-## Security
-
-### Vault Encryption
-
-The vault uses **Fernet symmetric encryption** (cryptography library):
-
-- Key stored at `~/.config/neuralclaw/vault.key` (mode 0600)
-- Values encrypted before storage
-- Name/metadata stored in plaintext; values never exposed
-- Graceful degradation: wrong key returns `None` instead of crashing
-
-### Local-Only
-
-- No cloud sync, no external dependencies
-- All data stays on your machine
-- Gitignored vault directory: `~/.config/neuralclaw/vault/`
+SQLite with 10+ tables: projects, context_items, context_links, errors, decisions, usage_logs, model_profiles, fresh_apple, vault_entries, schema_version, context_fts, embeddings_cache.
 
 ---
 
@@ -324,35 +246,21 @@ The vault uses **Fernet symmetric encryption** (cryptography library):
 
 Adapters define how context is formatted for each AI system:
 
-### OpenClaw
+| Adapter | Tokens | Variables | Style |
+|---------|--------|-----------|-------|
+| **openclaw** | 200k | revealed | direct |
+| **chatgpt** | 128k | hidden | conversational |
+| **claude** | 200k | hidden | technical |
 
-```yaml
-max_tokens: 200000
-reveal_vars: true
-style: direct
-supports_system: true
-supports_functions: false
-```
+---
 
-### ChatGPT
+## Security
 
-```yaml
-max_tokens: 128000
-reveal_vars: false
-style: conversational
-supports_system: true
-supports_functions: true
-```
-
-### Claude
-
-```yaml
-max_tokens: 200000
-reveal_vars: false
-style: technical
-supports_system: true
-supports_functions: true
-```
+- **Fernet symmetric encryption** for vault secrets
+- Key stored at `~/.config/neuralclaw/vault.key` (mode 0600)
+- Values encrypted; names stored as plaintext
+- Graceful degradation: wrong key returns `None`
+- **Local-only** — no cloud sync, all data stays on your machine
 
 ---
 
@@ -362,11 +270,11 @@ supports_functions: true
 |-----------|------------|
 | Language | Python 3.11+ |
 | CLI | [Typer](https://typer.tiangolo.com/) + [Rich](https://github.com/Textualize/rich) |
-| Database | SQLite (local, no cloud) |
+| Database | SQLite (local) |
 | Encryption | [cryptography](https://cryptography.io/) (Fernet) |
-| Search | FTS5 (Full-Text Search) |
+| Search | FTS5 Full-Text Search |
 | Embeddings | [Ollama](https://ollama.ai/) (optional) |
-| API | FastAPI (optional server mode) |
+| API | FastAPI (optional) |
 | UI | Rich-based TUI |
 
 ---
@@ -375,7 +283,7 @@ supports_functions: true
 
 | Version | Date | Status |
 |---------|------|--------|
-| 0.4.1 | 2026-04-27 | Current — Test suite fixes + README update |
+| 0.4.1 | 2026-04-27 | Current — Interactive wizard, README updates |
 | 0.4.0 | 2026-04-26 | Ollama embeddings, Fresh & Doctor |
 | 0.3.0 | 2026-04-26 | Plugin system, Train Room, Playroom |
 | 0.2.0 | 2026-04-26 | FreshApple snapshots, health checks |
@@ -385,22 +293,12 @@ supports_functions: true
 
 ## Contributing
 
-Contributions welcome. Areas of interest:
-
-- More adapters (LocalAI, LM Studio, etc.)
-- TUI improvements
-- Web UI enhancements
-- Performance optimizations
-
 ```bash
-# Development setup
 git clone https://github.com/maxsarlija/neuralclaw.git
 cd neuralclaw
 python3 -m venv venv
 source venv/bin/activate
 pip install -e ".[dev]"
-
-# Run tests
 python -m pytest tests/ -v
 ```
 
@@ -408,7 +306,7 @@ python -m pytest tests/ -v
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) file.
 
 ---
 
