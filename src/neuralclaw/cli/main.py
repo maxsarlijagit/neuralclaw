@@ -2,7 +2,6 @@
 
 import json
 import time
-import uuid
 import typer
 from datetime import datetime
 from pathlib import Path
@@ -14,22 +13,21 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from neuralclaw.db.connection import (
-    init_db, db_exists, get_config_dir, get_schema_version,
-    get_vault_dir, get_vault_key_path, get_connection
+    init_db, db_exists, get_config_dir, get_schema_version
 )
 from neuralclaw.core.vault import (
     vault_set, vault_get, vault_list, vault_delete, vault_exists, init_vault
 )
 from neuralclaw.core.context import (
-    add_context_item, get_context_item, bulk_import_context, get_all_items,
-    update_context_item_state, delete_context_item, count_context_items
+    add_context_item, get_context_item, get_all_items,
+    delete_context_item, count_context_items
 )
 from neuralclaw.core.search import search_context_smart, suggest_context
 from neuralclaw.core.projects import (
     create_project, list_projects, get_project,
     archive_project, delete_project, project_exists
 )
-from neuralclaw.core.bridge import export_context_json, load_adapter
+from neuralclaw.core.bridge import export_context_json
 from neuralclaw.plugins import (
     load_plugins, list_plugins, enable_plugin, disable_plugin, get_plugin,
     run_context_search_hooks, run_context_export_hooks,
@@ -40,10 +38,10 @@ from neuralclaw.core.train_room import (
 from neuralclaw.core.playroom import test_prompt, print_comparison
 from neuralclaw.core.fresh import (
     generate_fresh_apple, save_fresh_apple, get_fresh_apple,
-    is_fresh, list_fresh_apples
+    is_fresh
 )
 from neuralclaw.core.doctor import run_doctor_checks, print_doctor_report
-from neuralclaw.logging import init_logging, log_command
+from neuralclaw.logging import log_command
 
 
 # Main app
@@ -137,7 +135,7 @@ def serve(
     """Start the FastAPI REST API server with web dashboard."""
     try:
         from neuralclaw.api.server import run_server
-        console.print(f"[green]Starting NeuralClaw API server...[/green]")
+        console.print("[green]Starting NeuralClaw API server...[/green]")
         console.print(f"  Dashboard: http://localhost:{port}/")
         console.print(f"  API docs:  http://localhost:{port}/docs")
         run_server(host=host, port=port)
@@ -323,8 +321,8 @@ def init(
     
     summary_lines = [
         f"[dim]Config:[/dim]     {config_dir}",
-        f"[dim]Database:[/dim]    SQLite (local)",
-        f"[dim]Vault:[/dim]       Encrypted with Fernet",
+        "[dim]Database:[/dim]    SQLite (local)",
+        "[dim]Vault:[/dim]       Encrypted with Fernet",
         f"[dim]Projects:[/dim]   {len(projects)} created",
         f"[dim]Adapters:[/dim]    {', '.join(enabled_adapters)}",
     ]
@@ -656,7 +654,7 @@ def vault_status_cmd():
         console.print("[yellow]Vault not initialized (run 'neuralclaw init')[/yellow]")
         return
     secrets = vault_list()
-    console.print(f"[green]✓[/green] Vault initialized")
+    console.print("[green]✓[/green] Vault initialized")
     console.print(f"  Secrets stored: {len(secrets)}")
 
 
@@ -738,7 +736,7 @@ def import_cmd(
     batch_size: int = typer.Option(100, "--batch-size", help="Batch size for bulk insert"),
 ):
     """Bulk import context items from a JSON or JSONL file."""
-    from neuralclaw.logging import log_command, log_info
+    from neuralclaw.logging import log_info
 
     input_path = Path(from_file)
     if not input_path.exists():
@@ -965,7 +963,7 @@ def restore_cmd(
         except Exception:
             pass
     
-    console.print(f"[green]✓[/green] Restore complete")
+    console.print("[green]✓[/green] Restore complete")
     console.print(f"  Projects created: {projects_restored}")
     console.print(f"  Context items restored: {items_restored}")
 
@@ -986,22 +984,22 @@ def delete_item_cmd(
         console.print(f"[red]Error:[/red] Item not found: {item_id}")
         raise typer.Exit(1)
     
-    console.print(f"[cyan]Item details:[/cyan]")
+    console.print("[cyan]Item details:[/cyan]")
     console.print(f"  Key: [bold]{item['key']}[/bold]")
     console.print(f"  Value: {item.get('value', '')[:60]}...")
     console.print(f"  Type: {item.get('type', 'note')} | State: {item.get('state', 'active')}")
     if item.get('project_id'):
         console.print(f"  Project: {item['project_id']}")
     
-    if not force and not Confirm.ask(f"\nDelete this item?"):
+    if not force and not Confirm.ask("\nDelete this item?"):
         console.print("[yellow]Cancelled[/yellow]")
         return
     
     success = delete_context_item(item_id)
     if success:
-        console.print(f"[green]✓[/green] Item deleted")
+        console.print("[green]✓[/green] Item deleted")
     else:
-        console.print(f"[red]Error:[/red] Could not delete item")
+        console.print("[red]Error:[/red] Could not delete item")
         raise typer.Exit(1)
 
 

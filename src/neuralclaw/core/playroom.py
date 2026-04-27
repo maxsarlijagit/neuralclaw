@@ -1,11 +1,10 @@
 """Playroom — Test prompts across multiple adapters and compare outputs."""
 
-import json
 from typing import Any
 
 import yaml
 
-from neuralclaw.core.bridge import load_adapter, build_context_export
+from neuralclaw.core.bridge import build_context_export
 
 
 def _load_adapter_yaml(adapter_name: str) -> dict[str, Any]:

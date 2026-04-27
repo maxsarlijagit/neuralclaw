@@ -7,8 +7,6 @@ from typing import Any
 
 import yaml
 
-from neuralclaw.db.connection import get_connection
-from neuralclaw.core import context as ctx_module
 from neuralclaw.core import vault as vault_module
 
 ADAPTERS_DIR = Path(__file__).parent.parent / "adapters"

@@ -2,10 +2,9 @@
 
 import uuid
 import time
-import json
 from typing import Any
 
-from neuralclaw.db.connection import get_connection, get_vault_key_path, db_exists
+from neuralclaw.db.connection import get_connection, get_vault_key_path
 from neuralclaw.core.context import search_context
 
 

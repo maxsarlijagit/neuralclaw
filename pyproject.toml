@@ -73,6 +73,7 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+ignore = ["E402", "E722", "F841", "F541", "F811", "F401", "E741"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

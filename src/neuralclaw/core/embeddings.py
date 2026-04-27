@@ -1,7 +1,6 @@
 """Ollama embeddings integration for semantic search."""
 
 import math
-import time
 from typing import Optional
 
 import requests

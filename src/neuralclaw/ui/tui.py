@@ -1,23 +1,18 @@
 """Rich TUI - Interactive terminal UI for NeuralClaw."""
 
 import sys
-import time
-from pathlib import Path
 
 from rich.console import Console
-from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
-from rich.prompt import Prompt, Confirm
-from rich.live import Live
+from rich.prompt import Prompt
 from rich import box
 from typing import Optional
 
 from neuralclaw.db.connection import db_exists, init_db
-from neuralclaw.core.projects import list_projects, get_project, create_project, archive_project
-from neuralclaw.core.context import search_context, add_context_item, delete_context_item, count_context_items
-from neuralclaw.core.vault import vault_list, vault_exists, vault_set, vault_delete
+from neuralclaw.core.projects import list_projects, get_project
+from neuralclaw.core.context import search_context, count_context_items
+from neuralclaw.core.vault import vault_list, vault_exists
 from neuralclaw.ui.dashboard import Dashboard
 
 

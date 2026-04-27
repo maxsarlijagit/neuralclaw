@@ -1,13 +1,10 @@
 """Advanced search: FTS5 full-text and semantic embeddings search."""
 
 import json
-import math
-import time
-from typing import Any, Optional
+from typing import Any
 
 from neuralclaw.db.connection import get_connection
 from neuralclaw.core.embeddings import (
-    OllamaEmbeddings,
     cosine_similarity,
     get_embeddings_client,
 )
@@ -246,6 +243,7 @@ def search_context_smart(
         item_type=item_type,
         tags=tags,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -255,6 +253,7 @@ def _get_all_candidates(
     item_type: str | None = None,
     tags: list[str] | None = None,
     limit: int = 500,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     """Fetch all candidate items for embedding reranking."""
     sql_parts = ["SELECT * FROM context_items WHERE 1=1"]

@@ -4,19 +4,17 @@ import json
 from typing import Optional
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 
-from neuralclaw.db.connection import db_exists, init_db, get_connection
+from neuralclaw.db.connection import db_exists
 from neuralclaw.core.projects import (
     create_project, list_projects, get_project,
-    archive_project, delete_project, project_exists
+    project_exists
 )
 from neuralclaw.core.context import (
     search_context, get_context_item, add_context_item,
-    update_context_item_state, delete_context_item, count_context_items
+    update_context_item_state, count_context_items
 )
 from neuralclaw.core.vault import (
     vault_set, vault_get, vault_list, vault_delete, vault_exists

@@ -6,7 +6,7 @@ from typing import NamedTuple
 
 from neuralclaw.db.connection import (
     get_connection, db_exists, get_schema_version,
-    get_vault_key_path, get_db_path, get_config_dir
+    get_vault_key_path
 )
 from neuralclaw.core.fresh import list_fresh_apples
 from neuralclaw.plugins import run_doctor_check_hooks

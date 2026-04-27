@@ -3,10 +3,7 @@
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
-from rich.live import Live
 from typing import Optional
-from datetime import datetime
 
 from neuralclaw.core.projects import list_projects, get_project
 from neuralclaw.core.context import search_context, count_context_items

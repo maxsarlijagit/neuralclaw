@@ -1,14 +1,11 @@
 """Vault - Encrypted secret storage."""
 
 import hashlib
-import secrets
-import json
 from pathlib import Path
-from typing import Generator
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from neuralclaw.db.connection import get_vault_dir, get_vault_key_path, get_connection
+from neuralclaw.db.connection import get_vault_dir, get_vault_key_path
 
 
 def _get_fernet() -> Fernet:

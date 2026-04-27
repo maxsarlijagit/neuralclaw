@@ -1,6 +1,5 @@
 """Database connection and initialization."""
 
-import os
 import sqlite3
 import importlib
 from pathlib import Path

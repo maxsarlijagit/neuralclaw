@@ -33,7 +33,7 @@ def add_context_item(
         # Check for existing item with same key (for conflict detection)
         # Use NULL-safe comparison: (project_id = ? OR (project_id IS NULL AND ? IS NULL))
         null_safe_clause = (
-            f"(project_id = ? OR (project_id IS NULL AND ? IS NULL))"
+            "(project_id = ? OR (project_id IS NULL AND ? IS NULL))"
             if project_id is None
             else "project_id = ?"
         )
@@ -283,7 +283,7 @@ def bulk_import_context(
                     confidence=item_data.get("confidence", 1.0),
                 )
                 added += 1
-            except Exception as e:
+            except Exception:
                 errors += 1
     
     return {"added": added, "errors": errors}
