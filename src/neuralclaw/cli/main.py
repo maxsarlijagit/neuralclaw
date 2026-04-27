@@ -73,6 +73,32 @@ app.add_typer(playroom_app)
 console = Console()
 
 
+# ─── AUTO SETUP ───────────────────────────────────────────────────────────────
+
+def _auto_setup():
+    """Auto-create default project if DB exists but has no projects.
+    
+    Called on startup to ensure the CLI always works without manual setup.
+    """
+    if not db_exists():
+        return  # No DB yet, init will handle
+    
+    if not vault_exists():
+        return  # Vault not initialized
+    
+    # DB exists, check for projects
+    try:
+        from neuralclaw.core.projects import list_projects
+        projects = list_projects()
+        
+        if len(projects) == 0:
+            # Auto-create default project silently
+            from neuralclaw.core.projects import create_project
+            create_project("default", "Default project created automatically")
+    except Exception:
+        pass  # Fail silently - not critical
+
+
 # ─── MAIN CALLBACK (--version) ────────────────────────────────────────────────
 
 @app.callback()
@@ -196,36 +222,35 @@ def init(
     console.print()
     
     # ═══════════════════════════════════════════════════════════════════════
-    # STEP 3: Create first project
+    # STEP 3: Auto-Setup Projects
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
-        "[bold]Step 2: Create Your First Project[/bold]",
+        "[bold]Step 2: Auto-Setup Projects[/bold]",
         border_style="green"
     ))
-    console.print("[dim]Projects organize your context items.[/dim]\n")
+    console.print("[dim]Checking for existing projects...[/dim]\n")
     
-    if non_interactive:
-        project_name = "default"
-        project_desc = "Default project"
+    # Auto-setup: scan existing projects and auto-create default if needed
+    existing_projects = []
+    try:
+        from neuralclaw.core.projects import list_projects
+        existing_projects = list_projects()
+    except Exception:
+        pass
+    
+    if len(existing_projects) == 0:
+        console.print("[cyan]→[/cyan] No projects found. Creating 'default' project automatically...")
+        try:
+            from neuralclaw.core.projects import create_project
+            create_project("default", "Default project created automatically on first setup")
+            console.print("[green]✓[/green] Project 'default' created")
+        except Exception as e:
+            console.print(f"[yellow]![/yellow] Could not auto-create project: {e}")
     else:
-        project_name = Prompt.ask(
-            "[cyan]Project name[/cyan]",
-            default="my-first-project",
-            show_default=True
-        )
-        project_desc = Prompt.ask(
-            "[cyan]Description[/cyan] (optional)",
-            default="",
-            show_default=False
-        )
+        project_names = [p["name"] for p in existing_projects]
+        console.print(f"[green]✓[/green] Found {len(existing_projects)} project(s): [cyan]{', '.join(project_names)}[/cyan]")
     
-    if project_name.strip():
-        from neuralclaw.core.projects import create_project, project_exists
-        if project_exists(project_name):
-            console.print(f"[yellow]Project '{project_name}' already exists.[/yellow]")
-        else:
-            pid = create_project(project_name.strip(), project_desc.strip())
-            console.print(f"[green]✓[/green] Project created: [bold]{project_name}[/bold]")
+    console.print()
     
     console.print()
     
