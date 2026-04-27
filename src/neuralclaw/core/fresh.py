@@ -86,15 +86,16 @@ def generate_fresh_apple(project_id: str | None = None, project_name: str | None
             LIMIT 20
         """).fetchall()
 
-    if conflicts:
-        lines.append("## ⚠️ Conflicting Items")
-        for c in conflicts:
-            pname = conn.execute(
-                "SELECT name FROM projects WHERE id = ?", (c["project_id"],)
-            ).fetchone()
-            pstr = f" [{pname['name']}]" if pname else ""
-            lines.append(f"- **{c['key']}**{pstr}: `{c['value'][:60]}`")
-        lines.append("")
+        if conflicts:
+            lines.append("## ⚠️ Conflicting Items")
+            # Materialize the conflicts list before connection closes
+            for c in list(conflicts):
+                pname = conn.execute(
+                    "SELECT name FROM projects WHERE id = ?", (c["project_id"],)
+                ).fetchone()
+                pstr = f" [{pname['name']}]" if pname else ""
+                lines.append(f"- **{c['key']}**{pstr}: `{c['value'][:60]}`")
+            lines.append("")
 
     # Stale items count
     with get_connection() as conn:
