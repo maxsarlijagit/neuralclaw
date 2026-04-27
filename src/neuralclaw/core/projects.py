@@ -28,7 +28,7 @@ def list_projects(status: str | None = None) -> list[dict[str, Any]]:
     if status is not None:
         sql += " WHERE status = ?"
         params.append(status)
-    sql += " ORDER BY updated_at DESC"
+    sql += " ORDER BY updated_at DESC, created_at DESC"
 
     with get_connection() as conn:
         rows = conn.execute(sql, params).fetchall()

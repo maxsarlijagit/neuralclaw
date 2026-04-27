@@ -2,7 +2,7 @@
 
 import pytest
 import json
-from click.testing import CliRunner
+from typer.testing import CliRunner
 from neuralclaw.cli.main import app
 
 

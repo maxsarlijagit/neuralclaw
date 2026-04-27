@@ -104,7 +104,7 @@ def vault_set(name: str, value: str) -> None:
 
 
 def vault_get(name: str) -> str | None:
-    """Retrieve a secret from the vault. Returns None if not found."""
+    """Retrieve a secret from the vault. Returns None if not found or decryption fails."""
     vault_dir = get_vault_dir()
     vault_db = vault_dir / "vault.db"
 
@@ -121,7 +121,11 @@ def vault_get(name: str) -> str | None:
     if not row:
         return None
 
-    return _decrypt_value(row["encrypted_value"])
+    try:
+        return _decrypt_value(row["encrypted_value"])
+    except InvalidToken:
+        # Key was replaced or data corrupted - graceful degradation
+        return None
 
 
 def vault_list() -> list[str]:

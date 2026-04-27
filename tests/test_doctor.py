@@ -1,7 +1,7 @@
 """Tests for doctor command."""
 
 import pytest
-from click.testing import CliRunner
+from typer.testing import CliRunner
 from neuralclaw.cli.main import app
 
 

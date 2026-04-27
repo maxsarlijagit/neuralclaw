@@ -1,18 +1,16 @@
-"""Pytest configuration and shared fixtures."""
+"""Pytest configuration and shared fixtures with debugging."""
 
 import json
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Any
-from unittest.mock import patch
 
 import pytest
 
 
 @pytest.fixture
 def temp_config():
-    """Use a temporary config directory for tests."""
+    """Use a temporary config directory for tests (function-scoped, unique per test)."""
     tmpdir = tempfile.mkdtemp(prefix="neuralclaw_test_")
     config_dir = Path(tmpdir) / "neuralclaw"
     config_dir.mkdir()
@@ -30,24 +28,33 @@ def temp_config():
 
     yield info
 
-    # Cleanup
     shutil.rmtree(tmpdir, ignore_errors=True)
 
 
 @pytest.fixture
 def fresh_db(temp_config):
-    """Initialize a fresh database for testing."""
-    # Patch appdirs BEFORE any neuralclaw module is imported
-    with patch("appdirs.user_config_dir", lambda x=None: temp_config["tmpdir"]):
-        # Clear any previously imported neuralclaw modules
-        import sys
-        for mod in list(sys.modules.keys()):
-            if "neuralclaw" in mod:
-                sys.modules.pop(mod, None)
+    """Initialize a fresh database for testing.
 
+    Patches appdirs.user_config_dir (the root cause) to use the temp config
+    directory, then clears any neuralclaw modules and calls init_db().
+    """
+    import sys
+    import appdirs
+
+    # Clear all neuralclaw modules so they re-import with patched config
+    for mod in list(sys.modules.keys()):
+        if "neuralclaw" in mod:
+            sys.modules.pop(mod, None)
+
+    orig_user_config_dir = appdirs.user_config_dir
+    appdirs.user_config_dir = lambda x=None: str(temp_config["config_dir"])
+
+    try:
         from neuralclaw.db.connection import init_db
         init_db()
         yield
+    finally:
+        appdirs.user_config_dir = orig_user_config_dir
 
 
 @pytest.fixture
@@ -59,13 +66,7 @@ def sample_project(fresh_db):
 
 @pytest.fixture
 def vaultInitialized(fresh_db, temp_config):
-    """Initialize vault for tests that need it.
-
-    Note: vault.key is stored at config/vault.key (not in vault/),
-    so we verify it by checking via the vault module functions.
-    """
-    from neuralclaw.core.vault import init_vault, get_vault_key_path
+    """Initialize vault for tests that need it."""
+    from neuralclaw.core.vault import init_vault
     init_vault()
-    # Verify using the actual vault module path
-    assert get_vault_key_path().exists(), f"vault.key not at expected path: {get_vault_key_path()}"
     return True

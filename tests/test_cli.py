@@ -2,7 +2,7 @@
 
 import json
 import pytest
-from click.testing import CliRunner
+from typer.testing import CliRunner
 
 from neuralclaw.cli.main import app
 from neuralclaw.core.context import add_context_item, search_context
@@ -248,9 +248,8 @@ class TestCLIImport:
 
     def test_import_help(self, fresh_db):
         runner = CliRunner()
-        result = runner.invoke(app, ["import", "--help"])
-        # Import command should exist
-        assert result.exit_code in [0, 1]  # May need --from flag
+        result = runner.invoke(app, ["import-cmd", "--help"])
+        assert result.exit_code == 0
 
     def test_import_from_json(self, fresh_db, tmp_path):
         json_file = tmp_path / "import.json"
@@ -259,7 +258,7 @@ class TestCLIImport:
             {"key": "import_key_2", "value": "value2", "type": "variable"},
         ]))
         runner = CliRunner()
-        result = runner.invoke(app, ["import", "--from", str(json_file)])
+        result = runner.invoke(app, ["import-cmd", "--from", str(json_file)])
         assert result.exit_code == 0
 
         # Verify items were added
@@ -272,7 +271,7 @@ class TestCLIImport:
             '{"key": "jl_key_1", "value": "v1"}\n{"key": "jl_key_2", "value": "v2"}\n'
         )
         runner = CliRunner()
-        result = runner.invoke(app, ["import", "--from", str(jsonl_file)])
+        result = runner.invoke(app, ["import-cmd", "--from", str(jsonl_file)])
         assert result.exit_code == 0
 
     def test_import_with_project(self, fresh_db, sample_project, tmp_path):
@@ -281,7 +280,7 @@ class TestCLIImport:
             {"key": "proj_item", "value": "v"},
         ]))
         runner = CliRunner()
-        result = runner.invoke(app, ["import", "--from", str(json_file), "-p", sample_project])
+        result = runner.invoke(app, ["import-cmd", "--from", str(json_file), "-p", sample_project])
         assert result.exit_code == 0
 
 
