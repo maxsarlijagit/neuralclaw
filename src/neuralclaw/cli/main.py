@@ -397,6 +397,7 @@ def search(
     item_type: Optional[str] = typer.Option(None, "--type", "-t", help="Filter by type"),
     tags: Optional[str] = typer.Option(None, "--tags", help="Filter by comma-separated tags"),
     limit: int = typer.Option(50, "--limit", "-l", help="Max results"),
+    offset: int = typer.Option(0, "--offset", "-o", help="Pagination offset"),
     method: str = typer.Option("auto", "--method", "-m", help="Search method: auto, keyword, fts, embeddings"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     use_fts: bool = typer.Option(False, "--use-fts", help="Force FTS5 full-text search"),
@@ -421,7 +422,7 @@ def search(
 
     results = search_context_smart(
         query=query or None, project_id=project_id,
-        state=state, item_type=item_type, tags=tag_list, limit=limit,
+        state=state, item_type=item_type, tags=tag_list, limit=limit, offset=offset,
         method=search_method,
     )
 
@@ -433,8 +434,14 @@ def search(
         return
 
     if not results:
-        console.print("[dim]No results found[/dim]")
+        if offset > 0:
+            console.print(f"[dim]No more results (page offset: {offset})[/dim]")
+        else:
+            console.print("[dim]No results found[/dim]")
         return
+
+    if offset > 0:
+        console.print(f"[dim]Showing results {offset} to {offset + len(results)}[/dim]")
 
     table = Table(title=f"Context Items ({len(results)} results)")
     table.add_column("Key", style="cyan", no_wrap=False)

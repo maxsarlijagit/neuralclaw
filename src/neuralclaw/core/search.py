@@ -38,8 +38,9 @@ def search_context_fts(
     item_type: str | None = None,
     tags: list[str] | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Search using FTS5 full-text search."""
+    """Search using FTS5 full-text search. Supports pagination with limit/offset."""
     if not query:
         return []
 
@@ -64,8 +65,8 @@ def search_context_fts(
         sql_parts.append("AND c.type = ?")
         params.append(item_type)
 
-    sql_parts.append("ORDER BY rank LIMIT ?")
-    params.append(limit)
+    sql_parts.append("ORDER BY rank LIMIT ? OFFSET ?")
+    params.extend([limit, offset])
 
     with get_connection() as conn:
         rows = conn.execute(" ".join(sql_parts), params).fetchall()
@@ -89,8 +90,9 @@ def search_context_embeddings(
     item_type: str | None = None,
     tags: list[str] | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Search using Ollama embeddings (semantic search)."""
+    """Search using Ollama embeddings (semantic search). Supports pagination."""
     client = get_embeddings_client()
 
     if client is None:
@@ -142,8 +144,9 @@ def search_context_keyword(
     item_type: str | None = None,
     tags: list[str] | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
-    """Search using LIKE (keyword fallback)."""
+    """Search using LIKE (keyword fallback). Supports pagination."""
     sql_parts = ["SELECT * FROM context_items WHERE 1=1"]
     params = []
 
@@ -163,8 +166,8 @@ def search_context_keyword(
         sql_parts.append("AND (key LIKE ? OR value LIKE ?)")
         params.extend([f"%{query}%", f"%{query}%"])
 
-    sql_parts.append("ORDER BY updated_at DESC LIMIT ?")
-    params.append(limit)
+    sql_parts.append("ORDER BY updated_at DESC LIMIT ? OFFSET ?")
+    params.extend([limit, offset])
 
     with get_connection() as conn:
         rows = conn.execute(" ".join(sql_parts), params).fetchall()
@@ -187,6 +190,7 @@ def search_context_smart(
     tags: list[str] | None = None,
     method: str = "keyword",
     limit: int = 50,
+    offset: int = 0,
 ) -> list[dict[str, Any]]:
     """Smart search that picks the best method based on query complexity and config.
 
@@ -195,6 +199,7 @@ def search_context_smart(
         method: 'keyword', 'fts', or 'embeddings'
         project_id, state, item_type, tags: Filters
         limit: Max results
+        offset: Pagination offset
 
     Returns:
         List of matching context items with relevance info
@@ -207,6 +212,7 @@ def search_context_smart(
             item_type=item_type,
             tags=tags,
             limit=limit,
+            offset=offset,
         )
 
     if method == "fts":
@@ -217,6 +223,7 @@ def search_context_smart(
             item_type=item_type,
             tags=tags,
             limit=limit,
+            offset=offset,
         )
 
     # keyword / auto
@@ -229,6 +236,7 @@ def search_context_smart(
             item_type=item_type,
             tags=tags,
             limit=limit,
+            offset=offset,
         )
 
     return search_context_keyword(
@@ -262,8 +270,8 @@ def _get_all_candidates(
         sql_parts.append("AND type = ?")
         params.append(item_type)
 
-    sql_parts.append("ORDER BY updated_at DESC LIMIT ?")
-    params.append(limit)
+    sql_parts.append("ORDER BY updated_at DESC LIMIT ? OFFSET ?")
+    params.extend([limit, offset])
 
     with get_connection() as conn:
         rows = conn.execute(" ".join(sql_parts), params).fetchall()

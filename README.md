@@ -68,8 +68,8 @@ The wizard guides you through 4 steps:
 │  Step 1: System Initialization                         │
 │           → Creates config, database, vault            │
 │                                                         │
-│  Step 2: Create Your First Project                      │
-│           → Name and description                        │
+│  Step 2: Auto-Setup Projects                           │
+│           → Scans for projects, creates 'default'       │
 │                                                         │
 │  Step 3: AI Adapter Selection                          │
 │           → OpenClaw, Claude, ChatGPT                  │
@@ -105,6 +105,12 @@ Export context for any AI agent:
 neuralclaw context --project myapp --task "implement login" --adapter openclaw
 neuralclaw context --project myapp --task "code review" --adapter claude
 neuralclaw context --project myapp --task "write tests" --adapter chatgpt
+```
+
+**Search with pagination (limit + offset):**
+```bash
+neuralclaw search "database" --limit 50 --offset 0    # First page
+neuralclaw search "database" --limit 50 --offset 50   # Second page
 ```
 
 ---
