@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 from typing import Any, TypedDict
 
+import appdirs
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ HookResults = list[dict[str, Any]]
 HookExportData = dict[str, Any]
 HookDoctorCheck = list[dict[str, str]]  # list of {check: str, status: str, message: str}
 
-PLUGIN_CONFIG_DIR = Path(__file__).parent.parent.parent.parent / ".config" / "neuralclaw"
+PLUGIN_CONFIG_DIR = Path(appdirs.user_config_dir("neuralclaw"))
 PLUGIN_CONFIG_FILE = PLUGIN_CONFIG_DIR / "plugins.yaml"
 
 
@@ -171,6 +172,8 @@ def run_context_search_hooks(
     results: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Run on_context_search hooks on search results."""
+    if not _registered_plugins:
+        load_plugins()
     for spec in _registered_plugins.values():
         if not spec.enabled:
             continue
@@ -185,6 +188,8 @@ def run_context_search_hooks(
 
 def run_context_export_hooks(export_data: dict[str, Any]) -> dict[str, Any]:
     """Run on_context_export hooks on export data."""
+    if not _registered_plugins:
+        load_plugins()
     for spec in _registered_plugins.values():
         if not spec.enabled:
             continue
@@ -199,6 +204,8 @@ def run_context_export_hooks(export_data: dict[str, Any]) -> dict[str, Any]:
 
 def run_doctor_check_hooks() -> HookDoctorCheck:
     """Run on_doctor_check hooks. Returns accumulated check results."""
+    if not _registered_plugins:
+        load_plugins()
     all_checks: HookDoctorCheck = []
     for spec in _registered_plugins.values():
         if not spec.enabled:

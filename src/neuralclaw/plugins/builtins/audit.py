@@ -7,15 +7,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import appdirs
+
 logger = logging.getLogger(__name__)
 
-# Audit log path — stored in config dir
-_AUDIT_LOG = Path(__file__).parent.parent.parent.parent.parent / ".config" / "neuralclaw" / "audit.log"
-_AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+
+def _get_audit_log_path() -> Path:
+    """Get the audit log file path in config dir."""
+    config_dir = Path(appdirs.user_config_dir("neuralclaw"))
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir / "audit.log"
 
 
 def _audit_log(action: str, **kwargs: Any) -> None:
     """Append an audit record to the audit log."""
+    audit_log = _get_audit_log_path()
     entry = {
         "timestamp": datetime.now().isoformat(),
         "unixtime": int(time.time()),
@@ -23,7 +29,7 @@ def _audit_log(action: str, **kwargs: Any) -> None:
         **kwargs,
     }
     try:
-        with open(_AUDIT_LOG, "a") as f:
+        with open(audit_log, "a") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception as exc:
         logger.warning("Audit log write failed: %s", exc)
@@ -67,15 +73,15 @@ def _on_context_export(export_data: dict[str, Any]) -> dict[str, Any]:
 def _on_doctor_check() -> list[dict[str, str]]:
     """Add audit system health check."""
     checks: list[dict[str, str]] = []
-    if _AUDIT_LOG.exists():
+    audit_log = _get_audit_log_path()
+    if audit_log.exists():
         try:
-            # Check if audit log is writable by attempting a small write
-            with open(_AUDIT_LOG, "a") as f:
+            with open(audit_log, "a") as f:
                 f.write("")
             checks.append({
                 "check": "audit_log",
                 "status": "ok",
-                "message": f"Audit log writable at {_AUDIT_LOG}",
+                "message": f"Audit log writable at {audit_log}",
             })
         except Exception as exc:
             checks.append({

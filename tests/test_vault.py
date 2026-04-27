@@ -13,19 +13,16 @@ from neuralclaw.core.vault import (
 class TestVaultInit:
     """Tests for vault initialization."""
 
-    def test_init_creates_key_file(self, fresh_db, temp_config):
-        init_vault()
+    def test_init_creates_key_file(self, vaultInitialized, temp_config):
         assert temp_config["vault_key_path"].exists()
 
-    def test_init_idempotent(self, fresh_db, temp_config):
-        init_vault()
+    def test_init_idempotent(self, vaultInitialized, temp_config):
         key1 = temp_config["vault_key_path"].read_text()
         init_vault()  # Should not regenerate
         key2 = temp_config["vault_key_path"].read_text()
         assert key1 == key2
 
-    def test_init_creates_vault_db(self, fresh_db, temp_config):
-        init_vault()
+    def test_init_creates_vault_db(self, vaultInitialized, temp_config):
         vault_db = temp_config["vault_dir"] / "vault.db"
         assert vault_db.exists()
 
@@ -135,8 +132,7 @@ class TestVaultDelete:
 class TestVaultEncryption:
     """Tests that vault properly encrypts data."""
 
-    def test_plaintext_not_in_vault_db(self, fresh_db, temp_config):
-        init_vault()
+    def test_plaintext_not_in_vault_db(self, vaultInitialized, temp_config):
         vault_set("SUPER_SECRET", "my_secret_value")
 
         vault_db = temp_config["vault_dir"] / "vault.db"
@@ -154,9 +150,8 @@ class TestVaultEncryption:
         # (this is implicit in Fernet's usage but worth noting)
         assert vault_get("SAME_VALUE") == "constant_value"
 
-    def test_wrong_key_cannot_decrypt(self, fresh_db, temp_config):
+    def test_wrong_key_cannot_decrypt(self, vaultInitialized, temp_config):
         """If someone manually replaces vault.key, decryption should fail."""
-        init_vault()
         vault_set("SECRET", "value")
 
         # Replace key with wrong one
