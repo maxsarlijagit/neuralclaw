@@ -15,46 +15,119 @@ NeuralClaw is a **local-first context management system** for AI agents. It orga
 
 ---
 
-## Why NeuralClaw?
+## Installation
 
-When you're working with multiple AI agents across different tasks, each one needs different context. Sending everything to every agent is expensive and slow. Sending nothing means they start from scratch.
+Choose the method that fits your setup:
 
-NeuralClaw solves this by:
-
-- **Centralizing** project context, decisions, and variables in one place
-- **Encrypting** secrets (API keys, tokens) safely in a local vault
-- **Routing** the right context to the right agent via adapters
-- **Staying local** — no cloud, no sync, no dependencies
-
----
-
-## Quick Start
-
-### Installation
+### Via Git Clone
 
 ```bash
-# Using pipx (recommended)
-pipx install .
+# Clone the repository
+git clone https://github.com/maxsarlija/neuralclaw.git
+cd neuralclaw
 
-# Or using pip with venv
+# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
+
+# Install with all extras
+pip install -e ".[full]"
+
+# Or minimal installation
 pip install -e .
 ```
 
-### Initialize
+### Via pipx (recommended for global install)
+
+```bash
+pipx install .
+```
+
+### Via pip
+
+```bash
+pip install neuralclaw
+```
+
+> **Note:** When installed via `pip install`, the `neuralclaw` command becomes globally available.
+
+---
+
+## First Run Setup
+
+On first run, NeuralClaw provides an **interactive setup wizard** to get you started:
 
 ```bash
 neuralclaw init
 ```
 
-This creates:
-- `~/.config/neuralclaw/` — config directory
-- `~/.config/neuralclaw/neuralclaw.db` — SQLite database
-- `~/.config/neuralclaw/vault.key` — encryption key
-- `~/.config/neuralclaw/vault/vault.db` — encrypted secrets store
+The wizard walks you through:
 
-### Add Context
+```
+┌─────────────────────────────────────────────────────────┐
+│           🤖 NeuralClaw First Run Setup                 │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Step 1: Welcome                                         │
+│  ─────────────────────────────────────────────────────  │
+│  NeuralClaw needs to initialize your local context OS.  │
+│  This will create:                                       │
+│    • ~/.config/neuralclaw/ (config directory)           │
+│    • ~/.config/neuralclaw/neuralclaw.db (database)       │
+│    • ~/.config/neuralclaw/vault.key (encryption)        │
+│    • ~/.config/neuralclaw/vault/vault.db (secrets)      │
+│                                                         │
+│  Press ENTER to continue...                             │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  Step 2: Create your first project                       │
+│  ─────────────────────────────────────────────────────  │
+│  Project name: █                                        │
+│                                                         │
+│  Description (optional): █                              │
+│                                                         │
+│  Press ENTER to create...                               │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  Step 3: Configure your AI adapters                     │
+│  ─────────────────────────────────────────────────────  │
+│  Select which AI systems you use:                       │
+│                                                         │
+│    [x] OpenClaw    - Local agent framework              │
+│    [x] Claude       - Anthropic's Claude                 │
+│    [x] ChatGPT      - OpenAI's ChatGPT                  │
+│    [ ] LocalAI      - Self-hosted models                 │
+│    [ ] LM Studio    - Local model serving                │
+│                                                         │
+│  Press ENTER to continue...                             │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  Step 4: Optional Ollama integration                     │
+│  ─────────────────────────────────────────────────────  │
+│  Ollama provides local embeddings for semantic search.  │
+│  Do you want to enable it? (y/N): █                     │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│                      ✅ Setup Complete!                  │
+│  ─────────────────────────────────────────────────────  │
+│  Database:     /home/user/.config/neuralclaw/          │
+│  Vault:        Encrypted (Fernet)                       │
+│  Projects:     1 (my-first-project)                     │
+│  Adapters:     OpenClaw, Claude, ChatGPT                │
+│                                                         │
+│  Next steps:                                           │
+│    • neuralclaw add "my_key=my_value"                   │
+│    • neuralclaw project list                            │
+│    • neuralclaw --help                                  │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Quick Start (Command Line)
+
+After installation, you can use NeuralClaw directly:
 
 ```bash
 # Add a variable
@@ -67,7 +140,7 @@ neuralclaw add "decision: use Redis for session cache" --project myapp --tags ar
 neuralclaw add "Error: timeout on /api/auth endpoint" --type error --tags auth,prod
 ```
 
-### Export Context for an Agent
+### Export Context for an AI Agent
 
 ```bash
 # For OpenClaw agents
@@ -79,6 +152,19 @@ neuralclaw context --project myapp --task "code review" --adapter claude
 # For ChatGPT
 neuralclaw context --project myapp --task "write tests" --adapter chatgpt
 ```
+
+---
+
+## Why NeuralClaw?
+
+When you're working with multiple AI agents across different tasks, each one needs different context. Sending everything to every agent is expensive and slow. Sending nothing means they start from scratch.
+
+NeuralClaw solves this by:
+
+- **Centralizing** project context, decisions, and variables in one place
+- **Encrypting** secrets (API keys, tokens) safely in a local vault
+- **Routing** the right context to the right agent via adapters
+- **Staying local** — no cloud, no sync, no dependencies
 
 ---
 
@@ -139,7 +225,7 @@ neuralclaw vault delete OLD_API_KEY
 ## Commands Overview
 
 ```
-init           Initialize NeuralClaw: config, database, vault
+init           Initialize NeuralClaw: config, database, vault (interactive wizard)
 add            Add a context item (key=value format)
 search         Search context items with filters
 context        Export context as JSON for an AI agent
@@ -289,7 +375,7 @@ supports_functions: true
 
 | Version | Date | Status |
 |---------|------|--------|
-| 0.4.1 | 2026-04-27 | Current — Test suite fixes |
+| 0.4.1 | 2026-04-27 | Current — Test suite fixes + README update |
 | 0.4.0 | 2026-04-26 | Ollama embeddings, Fresh & Doctor |
 | 0.3.0 | 2026-04-26 | Plugin system, Train Room, Playroom |
 | 0.2.0 | 2026-04-26 | FreshApple snapshots, health checks |

@@ -10,6 +10,7 @@ from typing import Optional
 
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
 from neuralclaw.db.connection import (
@@ -103,27 +104,194 @@ def serve(
 # ─── INIT ───────────────────────────────────────────────────────────────────────
 
 @app.command()
-def init():
-    """Initialize NeuralClaw: creates config, database, and vault."""
-    config_dir = get_config_dir()
-    console.print(f"[bold]Initializing NeuralClaw at:[/bold] {config_dir}")
-
-    if db_exists():
+def init(
+    non_interactive: bool = typer.Option(False, "--yes", "-y", help="Skip interactive prompts (for automation)")
+):
+    """Initialize NeuralClaw with an interactive setup wizard.
+    
+    Creates config directory, database, vault, and optionally
+    guides you through creating your first project and selecting adapters.
+    """
+    # Check if already initialized (not first run)
+    already_init = db_exists() and vault_exists()
+    
+    if already_init:
         version = get_schema_version()
-        console.print(f"[yellow]Database already exists (schema v{version})[/yellow]")
-    else:
+        console.print(f"[yellow]NeuralClaw already initialized (schema v{version})[/yellow]")
+        if non_interactive:
+            console.print("[dim]Skipping. Run without -y to re-run setup wizard.[/dim]")
+            return
+        if not Confirm.ask("[dim]Re-run setup wizard?[/dim]", default=False):
+            console.print("[dim]Skipping. Your config is intact.[/dim]")
+            return
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 1: Welcome
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold cyan]🤖 NeuralClaw First Run Setup[/bold cyan]\n\n"
+        "[dim]Local Context OS for AI Agents[/dim]",
+        border_style="cyan"
+    ))
+    console.print()
+    
+    if not non_interactive:
+        console.print("[dim]This wizard will:[/dim]")
+        console.print("  • Create your config directory (~/.config/neuralclaw/)")
+        console.print("  • Initialize the SQLite database")
+        console.print("  • Set up the encrypted vault")
+        console.print("  • Help you create your first project")
+        console.print()
+        if not Confirm.ask("[cyan]Press ENTER to start setup...[/cyan]", default=True):
+            console.print("[dim]Cancelled.[/dim]")
+            return
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 2: Initialize database and vault
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold]Step 1: System Initialization[/bold]",
+        border_style="green"
+    ))
+    
+    config_dir = get_config_dir()
+    console.print(f"\n[dim]Config directory:[/dim] [cyan]{config_dir}[/cyan]")
+    
+    # Init database
+    if not db_exists():
         init_db()
         console.print("[green]✓[/green] Database created")
-
-    if vault_exists():
-        console.print("[yellow]Vault already initialized[/yellow]")
     else:
+        version = get_schema_version()
+        console.print(f"[yellow]✓[/yellow] Database exists (v{version})")
+    
+    # Init vault
+    if not vault_exists():
         init_vault()
-        console.print("[green]✓[/green] Vault initialized")
-
-    console.print(f"\n[bold green]NeuralClaw ready![/bold green]")
-    console.print(f"Config: {config_dir}")
-    console.print("\nNext: neuralclaw add 'my_key=my_value' --project my-project")
+        console.print("[green]✓[/green] Vault initialized (secrets encrypted)")
+    else:
+        console.print("[yellow]✓[/yellow] Vault already exists")
+    
+    console.print()
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 3: Create first project
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold]Step 2: Create Your First Project[/bold]",
+        border_style="green"
+    ))
+    console.print("[dim]Projects organize your context items.[/dim]\n")
+    
+    if non_interactive:
+        project_name = "default"
+        project_desc = "Default project"
+    else:
+        project_name = Prompt.ask(
+            "[cyan]Project name[/cyan]",
+            default="my-first-project",
+            show_default=True
+        )
+        project_desc = Prompt.ask(
+            "[cyan]Description[/cyan] (optional)",
+            default="",
+            show_default=False
+        )
+    
+    if project_name.strip():
+        from neuralclaw.core.projects import create_project, project_exists
+        if project_exists(project_name):
+            console.print(f"[yellow]Project '{project_name}' already exists.[/yellow]")
+        else:
+            pid = create_project(project_name.strip(), project_desc.strip())
+            console.print(f"[green]✓[/green] Project created: [bold]{project_name}[/bold]")
+    
+    console.print()
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 4: Adapter selection
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold]Step 3: AI Adapters[/bold]",
+        border_style="green"
+    ))
+    console.print("[dim]Select the AI systems you work with:[/dim]\n")
+    
+    if non_interactive:
+        enabled_adapters = ["openclaw", "claude", "chatgpt"]
+    else:
+        console.print("  [dim](Press SPACE to toggle, ENTER to confirm)[/dim]")
+        console.print()
+        
+        # Use default selections
+        adapters_available = [
+            ("openclaw", "OpenClaw — Local agent framework"),
+            ("claude", "Claude — Anthropic's Claude"),
+            ("chatgpt", "ChatGPT — OpenAI"),
+        ]
+        
+        enabled_adapters = []
+        for adapter_id, adapter_desc in adapters_available:
+            console.print(f"    [cyan]•[/cyan] {adapter_desc}")
+        
+        console.print()
+        console.print("[dim]All adapters enabled by default. Run 'neuralclaw config' to change later.[/dim]")
+        enabled_adapters = [a[0] for a in adapters_available]
+    
+    console.print()
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 5: Ollama (optional)
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold]Step 4: Ollama Integration (Optional)[/bold]",
+        border_style="yellow"
+    ))
+    console.print("[dim]Ollama enables semantic search via local embeddings.[/dim]\n")
+    
+    if non_interactive:
+        enable_ollama = False
+    else:
+        enable_ollama = Confirm.ask(
+            "[cyan]Enable Ollama for semantic search?[/cyan]",
+            default=False
+        )
+        
+        if enable_ollama:
+            console.print("[dim]  → Set OLLAMA_URL in your environment or run 'neuralclaw config'[/dim]")
+    
+    console.print()
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # COMPLETION
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print(Panel.fit(
+        "[bold green]✅ NeuralClaw Setup Complete![/bold green]",
+        border_style="green"
+    ))
+    console.print()
+    
+    # Summary
+    from neuralclaw.core.projects import list_projects
+    projects = list_projects()
+    
+    summary_lines = [
+        f"[dim]Config:[/dim]     {config_dir}",
+        f"[dim]Database:[/dim]    SQLite (local)",
+        f"[dim]Vault:[/dim]       Encrypted with Fernet",
+        f"[dim]Projects:[/dim]   {len(projects)} created",
+        f"[dim]Adapters:[/dim]    {', '.join(enabled_adapters)}",
+    ]
+    
+    for line in summary_lines:
+        console.print(f"  {line}")
+    
+    console.print()
+    console.print("[bold]Quick start:[/bold]")
+    console.print("  [cyan]neuralclaw add[/cyan] 'my_key=my_value' --project my-first-project")
+    console.print("  [cyan]neuralclaw project list[/cyan]")
+    console.print("  [cyan]neuralclaw --help[/cyan]")
+    console.print()
 
 
 # ─── ADD ──────────────────────────────────────────────────────────────────────

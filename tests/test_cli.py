@@ -15,23 +15,28 @@ class TestCLIInit:
     def test_init_command(self, temp_config):
         runner = CliRunner()
         with runner.isolated_filesystem():
-            result = runner.invoke(app, ["init"])
-            # Should not fail
+            # Use -y flag to skip interactive prompts and handle existing config
+            result = runner.invoke(app, ["init", "-y"])
+            # Should not fail - either completes or skips if already exists
             assert result.exit_code == 0
-            assert "initialized" in result.output.lower() or "ready" in result.output.lower()
+            # Check for completion indicators
+            output_lower = result.output.lower()
+            assert any(x in output_lower for x in ["ready", "complete", "created", "exists"])
 
     def test_init_idempotent(self, temp_config):
         runner = CliRunner()
-        result = runner.invoke(app, ["init"])
+        # First init
+        result = runner.invoke(app, ["init", "-y"])
         assert result.exit_code == 0
-        result2 = runner.invoke(app, ["init"])
-        # Should not fail on second run
+        # Second init should also succeed (idempotent)
+        result2 = runner.invoke(app, ["init", "-y"])
         assert result2.exit_code == 0
 
     def test_init_creates_database(self, temp_config):
         runner = CliRunner()
-        result = runner.invoke(app, ["init"])
-        assert result.exit_code == 0
+        with runner.isolated_filesystem():
+            result = runner.invoke(app, ["init", "-y"])
+            assert result.exit_code == 0
 
 
 class TestCLIAdd:
@@ -291,8 +296,8 @@ class TestCLIComprehensive:
         """Test a complete workflow: init -> add -> search -> context."""
         runner = CliRunner()
 
-        # Init
-        result = runner.invoke(app, ["init"])
+        # Init (use -y to handle existing config)
+        result = runner.invoke(app, ["init", "-y"])
         assert result.exit_code == 0
 
         # Add context
