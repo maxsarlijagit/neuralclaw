@@ -246,3 +246,81 @@ def count_context_items(project_id: str | None = None, state: str | None = None)
     with get_connection() as conn:
         row = conn.execute(sql, params).fetchone()
     return row[0] if row else 0
+
+
+def bulk_import_context(
+    items: list[dict[str, Any]],
+    project_id: str | None = None,
+    batch_size: int = 50,
+) -> dict[str, int]:
+    """Import multiple context items in batches.
+    
+    Returns dict with 'added' and 'errors' counts.
+    """
+    added = 0
+    errors = 0
+    
+    for i in range(0, len(items), batch_size):
+        batch = items[i:i + batch_size]
+        for item_data in batch:
+            key = item_data.get("key") or item_data.get("KEY") or item_data.get("name")
+            value = item_data.get("value") or item_data.get("VALUE") or item_data.get("v") or item_data.get("content")
+            
+            if not key or value is None:
+                errors += 1
+                continue
+            
+            try:
+                add_context_item(
+                    project_id=item_data.get("project_id") or project_id,
+                    key=str(key),
+                    value=str(value),
+                    item_type=item_data.get("type") or item_data.get("item_type") or "note",
+                    state=item_data.get("state") or "active",
+                    tags=item_data.get("tags") or [],
+                    sources=item_data.get("sources") or [],
+                    stale_after=item_data.get("stale_after"),
+                    confidence=item_data.get("confidence", 1.0),
+                )
+                added += 1
+            except Exception as e:
+                errors += 1
+    
+    return {"added": added, "errors": errors}
+
+
+def get_all_items(
+    project_id: str | None = None,
+    state: str | None = None,
+    item_type: str | None = None,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Get all items with optional filters (for backup/export)."""
+    sql = "SELECT * FROM context_items WHERE 1=1"
+    params = []
+    
+    if project_id is not None:
+        sql += " AND project_id = ?"
+        params.append(project_id)
+    if state is not None:
+        sql += " AND state = ?"
+        params.append(state)
+    if item_type is not None:
+        sql += " AND type = ?"
+        params.append(item_type)
+    
+    sql += " ORDER BY created_at DESC"
+    if limit is not None:
+        sql += f" LIMIT {limit}"
+    
+    with get_connection() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    
+    results = []
+    for row in rows:
+        r = dict(row)
+        r["tags"] = json.loads(r["tags"]) if r["tags"] else []
+        r["sources"] = json.loads(r["sources"]) if r["sources"] else []
+        results.append(r)
+    
+    return results

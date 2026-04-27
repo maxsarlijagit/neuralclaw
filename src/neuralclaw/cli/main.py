@@ -21,7 +21,7 @@ from neuralclaw.core.vault import (
     vault_set, vault_get, vault_list, vault_delete, vault_exists, init_vault
 )
 from neuralclaw.core.context import (
-    add_context_item, get_context_item,
+    add_context_item, get_context_item, bulk_import_context, get_all_items,
     update_context_item_state, delete_context_item, count_context_items
 )
 from neuralclaw.core.search import search_context_smart, suggest_context
@@ -810,6 +810,192 @@ def import_cmd(
     console.print(f"[green]✓[/green] Imported [bold]{added}[/bold] items")
     if errors > 0:
         console.print(f"[yellow]⚠ {errors} items skipped (missing key/value)[/yellow]")
+
+
+# ─── BACKUP & RESTORE ─────────────────────────────────────────────────────────
+
+@app.command(name="backup")
+def backup_cmd(
+    output: Optional[str] = typer.Option(None, "--output", "-o", help="Output file path (.json or .json.gz)"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Backup specific project"),
+    pretty: bool = typer.Option(True, "--pretty/--no-pretty", help="Human-readable JSON"),
+):
+    """Export all context items, projects, and vault entries as JSON backup.
+    
+    Creates a portable backup file that can be restored with:
+    neuralclaw restore --from backup.json
+    """
+    import gzip
+    from pathlib import Path
+    
+    # Get all projects
+    projects = list_projects()
+    
+    # Get context items
+    project_id = None
+    if project:
+        proj = get_project(project)
+        if not proj:
+            console.print(f"[red]Error:[/red] Project '{project}' not found.")
+            raise typer.Exit(1)
+        project_id = proj["id"]
+    
+    context_items = get_all_items(project_id=project_id)
+    
+    # Get vault entries (metadata only, not values — values stay in vault)
+    vault_entries = []
+    if vault_exists():
+        from neuralclaw.core.vault import vault_list
+        vault_entries = vault_list()  # [{name, type, created_at}]
+    
+    # Build backup structure
+    backup = {
+        "version": "0.4.1",
+        "exported_at": datetime.now().isoformat(),
+        "projects": projects,
+        "context_items": context_items,
+        "vault_metadata": vault_entries,  # names/types only, no values
+        "schema_version": get_schema_version(),
+    }
+    
+    # Determine output
+    if not output:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output = f"neuralclaw_backup_{ts}.json"
+    
+    output_path = Path(output).expanduser()
+    
+    # Write backup
+    if str(output).endswith(".gz"):
+        with gzip.open(output_path, "wt", encoding="utf-8") as f:
+            json.dump(backup, f, indent=2 if pretty else None)
+    else:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(backup, f, indent=2 if pretty else None)
+    
+    console.print(f"[green]✓[/green] Backup saved to [bold]{output_path}[/bold]")
+    console.print(f"  Projects: {len(projects)}")
+    console.print(f"  Context items: {len(context_items)}")
+    console.print(f"  Vault entries: {len(vault_entries)}")
+    console.print("\n[dim]Note: Vault values are NOT exported (security). Run 'neuralclaw vault export' separately for secrets.")
+
+
+@app.command(name="restore")
+def restore_cmd(
+    from_file: str = typer.Argument(..., help="Backup file to restore (.json or .json.gz)"),
+    merge: bool = typer.Option(True, "--merge/--replace", help="Merge with existing data or replace"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+):
+    """Restore context items and projects from a backup file.
+    
+    Usage:
+    neuralclaw restore backup_20260427.json
+    """
+    import gzip
+    from pathlib import Path
+    
+    backup_path = Path(from_file).expanduser()
+    if not backup_path.exists():
+        console.print(f"[red]Error:[/red] Backup file not found: {from_file}")
+        raise typer.Exit(1)
+    
+    # Load backup
+    try:
+        if str(from_file).endswith(".gz"):
+            with gzip.open(backup_path, "rt", encoding="utf-8") as f:
+                backup = json.load(f)
+        else:
+            with open(backup_path, "r", encoding="utf-8") as f:
+                backup = json.load(f)
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Could not read backup file: {e}")
+        raise typer.Exit(1)
+    
+    # Validate backup structure
+    if "context_items" not in backup:
+        console.print("[red]Error:[/red] Invalid backup file (missing context_items)")
+        raise typer.Exit(1)
+    
+    if not force and not merge:
+        console.print("[yellow]⚠ This will replace ALL existing data![/yellow]")
+        if not Confirm.ask("Continue?"):
+            console.print("[dim]Cancelled[/dim]")
+            return
+    elif not force and merge:
+        console.print(f"[cyan]→[/cyan] Merging {len(backup['context_items'])} items into existing data")
+        if not Confirm.ask("Continue?", default=True):
+            return
+    
+    # Restore projects
+    projects_restored = 0
+    for proj in backup.get("projects", []):
+        if not project_exists(proj["name"]):
+            create_project(proj["name"], proj.get("description", ""))
+            projects_restored += 1
+    
+    # Restore context items
+    items_restored = 0
+    for item in backup["context_items"]:
+        try:
+            proj_id = item.get("project_id")
+            if proj_id:
+                proj = get_project(proj_id)
+                if not proj:
+                    # Project not found, skip
+                    continue
+            add_context_item(
+                project_id=proj_id,
+                key=item["key"],
+                value=item["value"],
+                item_type=item.get("type", "note"),
+                state=item.get("state", "active"),
+                tags=item.get("tags", []),
+                sources=item.get("sources", []),
+                stale_after=item.get("stale_after"),
+                confidence=item.get("confidence", 1.0),
+            )
+            items_restored += 1
+        except Exception:
+            pass
+    
+    console.print(f"[green]✓[/green] Restore complete")
+    console.print(f"  Projects created: {projects_restored}")
+    console.print(f"  Context items restored: {items_restored}")
+
+
+# ─── DELETE CONTEXT ITEM ──────────────────────────────────────────────────────
+
+@app.command(name="delete")
+def delete_item_cmd(
+    item_id: str = typer.Argument(..., help="Context item ID to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+):
+    """Delete a context item by ID.
+    
+    Use 'neuralclaw search' to find item IDs first.
+    """
+    item = get_context_item(item_id)
+    if not item:
+        console.print(f"[red]Error:[/red] Item not found: {item_id}")
+        raise typer.Exit(1)
+    
+    console.print(f"[cyan]Item details:[/cyan]")
+    console.print(f"  Key: [bold]{item['key']}[/bold]")
+    console.print(f"  Value: {item.get('value', '')[:60]}...")
+    console.print(f"  Type: {item.get('type', 'note')} | State: {item.get('state', 'active')}")
+    if item.get('project_id'):
+        console.print(f"  Project: {item['project_id']}")
+    
+    if not force and not Confirm.ask(f"\nDelete this item?"):
+        console.print("[yellow]Cancelled[/yellow]")
+        return
+    
+    success = delete_context_item(item_id)
+    if success:
+        console.print(f"[green]✓[/green] Item deleted")
+    else:
+        console.print(f"[red]Error:[/red] Could not delete item")
+        raise typer.Exit(1)
 
 
 # ─── DOCTOR ─────────────────────────────────────────────────────────────────
