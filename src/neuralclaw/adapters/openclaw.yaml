@@ -1,0 +1,16 @@
+model: openclaw
+name: OpenClaw
+context_format:
+  prepend: "## NeuralClaw Context\n"
+  append: "\n---\nContext served by NeuralClaw"
+max_tokens: 200000
+supports_system: true
+supports_functions: false
+reveal_vars: true
+preferences:
+  length: short
+  style: direct
+  markdown: true
+constraints:
+  - "Only use information marked as verified or active"
+  - "Flag any item marked as stale"

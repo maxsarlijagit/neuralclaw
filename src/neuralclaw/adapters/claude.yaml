@@ -1,0 +1,17 @@
+model: claude
+name: Claude
+context_format:
+  prepend: " |
+  append: " |
+max_tokens: 200000
+supports_system: true
+supports_functions: true
+reveal_vars: false
+preferences:
+  length: long
+  style: technical
+  markdown: true
+constraints:
+  - "Only use verified context"
+  - "Note any stale information"
+  - "Flag conflicts for resolution"

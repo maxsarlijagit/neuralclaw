@@ -1,0 +1,16 @@
+model: chatgpt
+name: ChatGPT
+context_format:
+  prepend: "You are working in a project-aware context."
+  append: "Only use information marked as verified. Flag conflicts."
+max_tokens: 128000
+supports_system: true
+supports_functions: true
+reveal_vars: false
+preferences:
+  length: medium
+  style: conversational
+  markdown: true
+constraints:
+  - "Only use information marked as verified"
+  - "Report any conflicting context items"
