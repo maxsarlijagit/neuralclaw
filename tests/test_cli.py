@@ -70,9 +70,12 @@ class TestCLIAdd:
         assert "not found" in result.output.lower() or "error" in result.output.lower()
 
     def test_add_invalid_format(self, fresh_db):
+        """Free-text notes are now allowed - no format required."""
         runner = CliRunner()
         result = runner.invoke(app, ["add", "invalid_format_no_equals"])
-        assert result.exit_code != 0
+        # Now accepts free-text as note (exit_code == 0)
+        assert result.exit_code == 0
+        assert "Added" in result.output or "note" in result.output.lower()
 
     def test_add_colon_separator(self, fresh_db):
         runner = CliRunner()
@@ -319,10 +322,9 @@ class TestCLIComprehensive:
         """Test that errors produce meaningful messages."""
         runner = CliRunner()
 
-        # Bad add format
+        # Bad add format - now allowed as free-text note
         result = runner.invoke(app, ["add", "badformat"])
-        assert result.exit_code != 0
-        assert "error" in result.output.lower() or "format" in result.output.lower()
+        assert result.exit_code == 0  # Now accepts free-text notes
 
         # Nonexistent project
         result = runner.invoke(app, ["add", "key=value", "-p", "noexist"])

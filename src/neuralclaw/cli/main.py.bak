@@ -2,17 +2,15 @@
 
 import json
 import time
-import sys
 import typer
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
-from rich.style import Style
 
 from neuralclaw.db.connection import (
     init_db, db_exists, get_config_dir, get_schema_version
@@ -24,7 +22,7 @@ from neuralclaw.core.context import (
     add_context_item, get_context_item, get_all_items,
     delete_context_item, count_context_items
 )
-from neuralclaw.core.search import search_context_smart, search_context_keyword
+from neuralclaw.core.search import search_context_smart, suggest_context
 from neuralclaw.core.projects import (
     create_project, list_projects, get_project,
     archive_project, delete_project, project_exists
@@ -46,76 +44,7 @@ from neuralclaw.core.doctor import run_doctor_checks, print_doctor_report
 from neuralclaw.logging import log_command
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# EXAMPLES — Real-world usage examples for help and tutorials
-# ═══════════════════════════════════════════════════════════════════════════════
-
-EXAMPLES = """
-[bold cyan]═══ NeuralClaw Quick Examples ═══[/bold cyan]
-
-[bold yellow]Adding context:[/bold yellow]
-  neuralclaw add "DATABASE_URL=postgres://localhost/mydb" --project mi-app
-  neuralclaw add "decision: use Redis for session cache" --tags architecture
-  neuralclaw add "Error: timeout on /api/auth" --type error --tags prod,auth
-  neuralclaw add "deploy: run migrate.sh before shipping" --type process
-  neuralclaw add "User prefers dark mode" --type preference --project mi-app
-
-[bold yellow]Smart shortcuts (auto-detect type):[/bold yellow]
-  neuralclaw add "API_KEY=sk_abc123"           → type: variable (auto-detected)
-  neuralclaw add "decision: use Postgres"      → type: decision (auto-detected)
-  neuralclaw add "BUG: crash on login"         → type: error (auto-detected)
-  neuralclaw add "TODO: refactor auth module"  → type: note (default)
-
-[bold yellow]Searching:[/bold yellow]
-  neuralclaw search database
-  neuralclaw search "error" --type error --project mi-app
-  neuralclaw search --interactive             → Interactive search mode
-  neuralclaw suggest "how do I handle auth"    → Semantic search
-
-[bold yellow]Projects:[/bold yellow]
-  neuralclaw project create "mi-proyecto" --description "Mi primer proyecto"
-  neuralclaw project list
-  neuralclaw project status mi-proyecto
-  neuralclaw project archive mi-proyecto
-
-[bold yellow]Vault (encrypted secrets):[/bold yellow]
-  neuralclaw vault set OPENAI_API_KEY sk-...
-  neuralclaw vault list
-  neuralclaw vault get OPENAI_API_KEY --reveal
-
-[bold yellow]Context for AI agents:[/bold yellow]
-  neuralclaw context --project mi-app --task "implement login"
-  neuralclaw context --project mi-app --adapter claude --include-vars
-  neuralclaw fresh --project mi-app            → Markdown snapshot
-
-[bold yellow]Backup & Restore:[/bold yellow]
-  neuralclaw backup --output backup.json
-  neuralclaw restore backup.json
-  neuralclaw import --from bulk.json --project mi-app
-
-[bold yellow]Health check:[/bold yellow]
-  neuralclaw doctor                           → Full system diagnostic
-  neuralclaw status                          → Quick status overview
-"""
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# GLOBALS — Verbose/quiet state
-# ═══════════════════════════════════════════════════════════════════════════════
-
-VERBOSE = False
-QUIET = False
-
-def _log_verbose(msg: str):
-    """Print message only in verbose mode."""
-    if VERBOSE:
-        console.print(f"[dim]→ {msg}[/dim]")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN APP
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# Main app
 app = typer.Typer(
     name="neuralclaw",
     help="NeuralClaw — Local Context OS for AI Agents",
@@ -123,6 +52,7 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
+# Version from pyproject.toml
 __version__ = "0.4.1"
 
 # Sub-groups
@@ -141,188 +71,50 @@ app.add_typer(playroom_app)
 console = Console()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TYPE INFERENCE — Smart detection of context item type from content
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _infer_type_from_content(item: str) -> tuple[str, list[str], str]:
-    """
-    Infer item type, suggested tags, and key from content.
-    Returns: (type, suggested_tags, key_hint)
-    
-    Type detection rules:
-    - KEY=value or KEY: value → type: variable
-    - "decision:" prefix → type: decision
-    - "Error:", "BUG:", "FIX:", "CRASH:" → type: error
-    - "TODO:", "NOTE:", "FIXME:" → type: note
-    - "deploy:", "run:", "execute:" → type: process
-    - "preference:", "user prefers:", "likes:" → type: preference
-    - "industry:", "market:", "competitor:" → type: industry
-    - Default → type: note
-    """
-    item_lower = item.lower().strip()
-    tags = []
-    
-    # Variable detection: KEY=value or KEY: value at start
-    if "=" in item and item.index("=") < 50:
-        key_candidate = item.split("=", 1)[0].strip()
-        if key_candidate and " " not in key_candidate and not any(
-            k in item_lower for k in ["decision:", "error:", "todo:", "note:", "deploy:", "bug:"]
-        ):
-            return "variable", [], key_candidate
-    
-    # Decision
-    if item_lower.startswith("decision:"):
-        return "decision", ["decision"], "decision"
-    
-    # Error patterns
-    error_prefixes = ["error:", "bug:", "crash:", "fix:", "failed:", "failure:"]
-    for prefix in error_prefixes:
-        if item_lower.startswith(prefix):
-            # Extract error code/name for tag
-            after_prefix = item.split(":", 1)[1].strip()[:30] if ":" in item else ""
-            tags = ["error", prefix.rstrip(":").replace(":", "")]
-            return "error", tags, f"error-{after_prefix[:20].replace(' ', '-')}" if after_prefix else "error"
-    
-    # Process patterns
-    if item_lower.startswith(("deploy:", "run:", "execute:", "build:", "test:")):
-        return "process", ["process"], item_lower.split(":")[0].replace(":", "")
-    
-    # Preference patterns
-    if item_lower.startswith(("preference:", "user prefers:", "likes:", "dislikes:")):
-        return "preference", ["preference"], "preference"
-    
-    # Note patterns
-    note_prefixes = ["todo:", "note:", "fixme:", "hack:", "reminder:"]
-    for prefix in note_prefixes:
-        if item_lower.startswith(prefix):
-            return "note", ["note"], prefix.rstrip(":")
-    
-    # Industry patterns
-    if item_lower.startswith(("industry:", "market:", "competitor:", "trend:")):
-        return "industry", ["industry"], "industry"
-    
-    # Default
-    return "note", [], "note"
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# SUGGEST SIMILAR — Did you mean functionality
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _suggest_similar(query: str, items: list, key_field: str = "name", limit: int = 3) -> list:
-    """Simple suggest similar items based on string similarity."""
-    if not query or not items:
-        return []
-    
-    query_lower = query.lower()
-    scored = []
-    
-    for item in items:
-        item_val = str(item.get(key_field, "")).lower()
-        # Simple scoring: count matching chars in sequence
-        score = 0
-        q_idx = 0
-        for c in item_val:
-            if q_idx < len(query_lower) and c == query_lower[q_idx]:
-                score += 1
-                q_idx += 1
-        # Also check if query is substring
-        if query_lower in item_val:
-            score += len(query_lower) * 2
-        # Check Levenshtein-like: common prefix
-        common_prefix = 0
-        for i, c in enumerate(query_lower):
-            if i < len(item_val) and item_val[i] == c:
-                common_prefix += 1
-            else:
-                break
-        score += common_prefix * 2
-        
-        if score > 0:
-            scored.append((score, item))
-    
-    scored.sort(reverse=True, key=lambda x: x[0])
-    return [item for _, item in scored[:limit]]
-
-
-def _print_suggestion_hint(query: str, project_name: str = None):
-    """Print hint when something is not found."""
-    # Try to suggest similar projects
-    if project_name:
-        projects = list_projects(status=None)
-        similar = _suggest_similar(project_name, projects, key_field="name")
-        if similar:
-            console.print()
-            console.print("[dim]¿Quisiste decir?[/dim]")
-            for p in similar:
-                console.print(f"  [cyan]→[/cyan] {p['name']} ({p['status']})")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# AUTO SETUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── AUTO SETUP ───────────────────────────────────────────────────────────────
 
 def _auto_setup():
-    """Auto-create default project if DB exists but has no projects."""
+    """Auto-create default project if DB exists but has no projects.
+    
+    Called on startup to ensure the CLI always works without manual setup.
+    """
     if not db_exists():
-        return
+        return  # No DB yet, init will handle
+    
     if not vault_exists():
-        return
+        return  # Vault not initialized
+    
+    # DB exists, check for projects
     try:
         from neuralclaw.core.projects import list_projects
         projects = list_projects()
+        
         if len(projects) == 0:
+            # Auto-create default project silently
             from neuralclaw.core.projects import create_project
             create_project("default", "Default project created automatically")
     except Exception:
-        pass
+        pass  # Fail silently - not critical
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN CALLBACK — Global flags (verbose, quiet)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── MAIN CALLBACK (--version) ────────────────────────────────────────────────
 
 @app.callback()
 def main(
     version: bool = typer.Option(False, "--version", "-v", help="Show version and exit"),
-    verbose: bool = typer.Option(False, "--verbose", help="Verbose output"),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Quiet mode (minimal output)"),
 ):
     """NeuralClaw — Local Context OS for AI Agents."""
-    global VERBOSE, QUIET
-    VERBOSE = verbose
-    QUIET = quiet
-    
     if version:
         console.print(f"[cyan]NeuralClaw[/cyan] [bold]{__version__}[/bold]")
         raise typer.Exit()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# VERSION COMMAND
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── VERSION SUB_COMMAND ──────────────────────────────────────────────────────
 
 @app.command(name="version")
 def version():
     """Show NeuralClaw version."""
     console.print(f"[cyan]NeuralClaw[/cyan] version [bold]{__version__}[/bold]")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# EXAMPLES COMMAND — Show usage examples
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.command(name="examples")
-def examples():
-    """Show real-world usage examples."""
-    console.print(Panel.fit(
-        EXAMPLES,
-        title="NeuralClaw Examples",
-        border_style="cyan",
-        padding=1,
-    ))
-
 
 @app.command()
 def tui():
@@ -352,292 +144,9 @@ def serve(
         raise typer.Exit(1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# INSTALL COMPLETION COMMAND — Shell completion
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.command(name="install-completion")
-def install_completion(
-    shell: str = typer.Argument("bash", help="Shell type: bash, zsh, fish"),
-):
-    """Install shell completion for NeuralClaw.
-    
-    Examples:
-      neuralclaw install-completion bash
-      neuralclaw install-completion zsh
-      neuralclaw install-completion fish
-    """
-    if shell == "bash":
-        completion_script = f"""
-# NeuralClaw shell completion - Add to ~/.bashrc
-eval "$(_NEURALCLAW_COMPLETE=bash_source neuralclaw)"
-"""
-        rc_file = Path.home() / ".bashrc"
-        console.print(f"[cyan]→[/cyan] Add to your [bold]{rc_file}[/bold]:")
-        console.print(completion_script)
-        
-    elif shell == "zsh":
-        completion_script = f"""
-# NeuralClaw shell completion - Add to ~/.zshrc
-autoload -U compinit
-compinit
-eval "$(_NEURALCLAW_COMPLETE=zsh_source neuralclaw)"
-"""
-        rc_file = Path.home() / ".zshrc"
-        console.print(f"[cyan]→[/cyan] Add to your [bold]{rc_file}[/bold]:")
-        console.print(completion_script)
-        
-    elif shell == "fish":
-        console.print(f"[cyan]→[/cyan] Run this command:")
-        console.print(f"  neuralclaw --completion fish | source")
-        console.print()
-        console.print("Or add to your [bold]~/.config/fish/config.fish[/bold]:")
-        console.print("  neuralclaw --completion fish | source")
-    else:
-        console.print(f"[red]Error:[/red] Unsupported shell: {shell}")
-        console.print("  Supported: bash, zsh, fish")
-        raise typer.Exit(1)
-    
-    console.print()
-    console.print("[dim]After adding, restart your shell or run: source ~/.bashrc (or ~/.zshrc)[/dim]")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STATUS COMMAND — Quick dashboard
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.command(name="status")
-def status():
-    """Show a quick status overview of NeuralClaw.
-    
-    Displays: projects, context items, vault status, and health summary.
-    """
-    from neuralclaw.db.connection import get_config_dir
-    
-    if not db_exists():
-        console.print(Panel.fit(
-            "[yellow]NeuralClaw not initialized[/yellow]\n\nRun [cyan]neuralclaw init[/cyan] to set up.",
-            title="NeuralClaw Status",
-            border_style="yellow",
-        ))
-        return
-    
-    # Projects
-    all_projects = list_projects(status=None)
-    active_projects = [p for p in all_projects if p["status"] == "active"]
-    archived_projects = [p for p in all_projects if p["status"] == "archived"]
-    
-    # Context items
-    total_items = count_context_items()
-    active_items = count_context_items(state="active")
-    stale_items = count_context_items(state="stale")
-    
-    # Vault
-    vault_count = len(vault_list()) if vault_exists() else 0
-    
-    # Schema version
-    schema_ver = get_schema_version()
-    config_dir = get_config_dir()
-    
-    # Build status table
-    status_table = Table(box=None, padding=(0, 2))
-    status_table.add_column("[bold]Component[/bold]", style="cyan")
-    status_table.add_column("[bold]Status[/bold]", style="green")
-    
-    status_table.add_row("Version", f"v{__version__}")
-    status_table.add_row("Schema", f"v{schema_ver}")
-    status_table.add_row("Projects", f"{len(active_projects)} active, {len(archived_projects)} archived")
-    status_table.add_row("Context Items", f"{total_items} total ({active_items} active, {stale_items} stale)")
-    status_table.add_row("Vault", f"{vault_count} secrets stored" if vault_exists() else "[yellow]not initialized[/yellow]")
-    status_table.add_row("Config", str(config_dir))
-    
-    console.print(Panel.fit(
-        status_table,
-        title=f"[bold]NeuralClaw Status[/bold] — v{__version__}",
-        border_style="cyan",
-        padding=1,
-    ))
-    
-    # Quick health
-    console.print()
-    if stale_items > 0:
-        console.print(f"[yellow]⚠ {stale_items} stale items. Run 'neuralclaw doctor' for details.[/yellow]")
-    else:
-        console.print("[green]✓ All systems healthy[/green]")
-    
-    # Next steps hint
-    if total_items == 0 and len(active_projects) <= 1:
-        console.print()
-        console.print("[dim]💡 Tip: Run 'neuralclaw examples' to see usage examples.[/dim]")
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# TUTORIAL COMMAND — Interactive walkthrough
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@app.command(name="tutorial")
-def tutorial():
-    """Launch an interactive walkthrough to learn NeuralClaw.
-    
-    Guides you through the core features step by step.
-    """
-    from neuralclaw.core.projects import create_project
-    
-    steps = [
-        {
-            "title": "🚀 Welcome to NeuralClaw",
-            "content": """NeuralClaw is your **local context OS for AI agents**.
-
-It helps you organize:
-• Project decisions and architecture choices
-• Secrets and API keys (encrypted)
-• Errors and how you solved them
-• Variables and configuration
-• Communication preferences for AI agents
-
-[dim]Let's get started![/dim]""",
-            "action": None,
-        },
-        {
-            "title": "📝 Step 1: Add your first context item",
-            "content": """Context items are the building blocks of NeuralClaw.
-
-[bold]Try these commands:[/bold]
-
-[cyan]neuralclaw add "MY_PROJECT=awesome-app"[/cyan]
-  → Saves a variable
-
-[cyan]neuralclaw add "decision: use PostgreSQL for main DB"[/cyan]
-  → Saves an architectural decision
-
-[cyan]neuralclaw add "Error: memory leak in worker process"[/cyan]
-  → Logs an error for future reference
-
-[dim]All items are stored locally and encrypted (secrets).[/dim]""",
-            "action": None,
-        },
-        {
-            "title": "🔍 Step 2: Search your context",
-            "content": """Find anything you've saved:
-
-[cyan]neuralclaw search database[/cyan]
-  → Search by keyword
-
-[cyan]neuralclaw suggest "authentication"[/cyan]
-  → Semantic search (requires Ollama)
-
-[cyan]neuralclaw search --interactive[/cyan]
-  → Interactive search mode
-
-[dim]Pro tip: Use --type and --tags to filter results.[/dim]""",
-            "action": None,
-        },
-        {
-            "title": "🔐 Step 3: Store secrets safely",
-            "content": """The vault stores secrets encrypted:
-
-[cyan]neuralclaw vault set OPENAI_KEY sk-...[/cyan]
-  → Store a secret
-
-[cyan]neuralclaw vault list[/cyan]
-  → See all secrets (names only)
-
-[cyan]neuralclaw vault get OPENAI_KEY --reveal[/cyan]
-  → Reveal a secret
-
-[dim]Values are encrypted with Fernet (AES-128-CBC).[/dim]""",
-            "action": None,
-        },
-        {
-            "title": "🤖 Step 4: Export context for AI agents",
-            "content": """NeuralClaw formats context for different AI systems:
-
-[cyan]neuralclaw context --project mi-app --task "implement login"[/cyan]
-  → Export context as JSON
-
-[cyan]neuralclaw context --adapter claude --project mi-app[/cyan]
-  → Format for Claude specifically
-
-[cyan]neuralclaw fresh --project mi-app[/cyan]
-  → Get a markdown snapshot
-
-[dim]Adapters ensure each AI gets context in its preferred format.[/dim]""",
-            "action": None,
-        },
-        {
-            "title": "🏥 Step 5: Health check",
-            "content": """Keep your system healthy:
-
-[cyan]neuralclaw doctor[/cyan]
-  → Full diagnostic (DB, vault, stale items, conflicts)
-
-[cyan]neuralclaw status[/cyan]
-  → Quick overview
-
-[dim]Run doctor periodically to clean up stale items.[/dim]""",
-            "action": None,
-        },
-        {
-            "title": "✅ You're ready!",
-            "content": """[bold green]NeuralClaw is now yours.[/bold green]
-
-[bold]Quick reference:[/bold]
-  neuralclaw add           → Add context
-  neuralclaw search        → Find context
-  neuralclaw vault         → Manage secrets
-  neuralclaw context       → Export for AI
-  neuralclaw doctor        → Health check
-  neuralclaw examples     → See more examples
-
-[dim]Type 'neuralclaw --help' for all commands.[/dim]""",
-            "action": None,
-        },
-    ]
-    
-    current_step = 0
-    
-    while True:
-        step = steps[current_step]
-        
-        console.print(Panel.fit(
-            step["content"],
-            title=step["title"],
-            border_style="cyan",
-            padding=1,
-        ))
-        
-        # Navigation
-        console.print()
-        nav_options = []
-        if current_step > 0:
-            nav_options.append("[b]←[/b] Previous")
-        if current_step < len(steps) - 1:
-            nav_options.append("[b]→[/b] Next")
-        nav_options.append("[b]q[/b] Quit tutorial")
-        
-        console.print("  ".join(nav_options))
-        console.print()
-        
-        choice = Prompt.ask(
-            "[cyan]Choose[/cyan]",
-            default="n" if current_step < len(steps) - 1 else "q"
-        )
-        
-        if choice.lower() in ("q", "quit", "exit"):
-            console.print("\n[dim]Tutorial exited. Happy context managing![/dim]\n")
-            break
-        elif choice.lower() in ("p", "prev", "←", "back") and current_step > 0:
-            current_step -= 1
-        elif choice.lower() in ("n", "next", "→", "enter") and current_step < len(steps) - 1:
-            current_step += 1
-        else:
-            if current_step == len(steps) - 1:
-                break
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# INIT COMMAND — With onboarding checklist
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── INIT ───────────────────────────────────────────────────────────────────────
 
 @app.command()
 def init(
@@ -648,6 +157,7 @@ def init(
     Creates config directory, database, vault, and optionally
     guides you through creating your first project and selecting adapters.
     """
+    # Check if already initialized (not first run)
     already_init = db_exists() and vault_exists()
     
     if already_init:
@@ -661,7 +171,7 @@ def init(
             return
     
     # ═══════════════════════════════════════════════════════════════════════
-    # WELCOME
+    # STEP 1: Welcome
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold cyan]🤖 NeuralClaw First Run Setup[/bold cyan]\n\n"
@@ -682,7 +192,7 @@ def init(
             return
     
     # ═══════════════════════════════════════════════════════════════════════
-    # STEP 1: System Initialization
+    # STEP 2: Initialize database and vault
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold]Step 1: System Initialization[/bold]",
@@ -692,6 +202,7 @@ def init(
     config_dir = get_config_dir()
     console.print(f"\n[dim]Config directory:[/dim] [cyan]{config_dir}[/cyan]")
     
+    # Init database
     if not db_exists():
         init_db()
         console.print("[green]✓[/green] Database created")
@@ -699,6 +210,7 @@ def init(
         version = get_schema_version()
         console.print(f"[yellow]✓[/yellow] Database exists (v{version})")
     
+    # Init vault
     if not vault_exists():
         init_vault()
         console.print("[green]✓[/green] Vault initialized (secrets encrypted)")
@@ -708,7 +220,7 @@ def init(
     console.print()
     
     # ═══════════════════════════════════════════════════════════════════════
-    # STEP 2: Auto-Setup Projects
+    # STEP 3: Auto-Setup Projects
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold]Step 2: Auto-Setup Projects[/bold]",
@@ -716,8 +228,10 @@ def init(
     ))
     console.print("[dim]Checking for existing projects...[/dim]\n")
     
+    # Auto-setup: scan existing projects and auto-create default if needed
     existing_projects = []
     try:
+        from neuralclaw.core.projects import list_projects
         existing_projects = list_projects()
     except Exception:
         pass
@@ -725,6 +239,7 @@ def init(
     if len(existing_projects) == 0:
         console.print("[cyan]→[/cyan] No projects found. Creating 'default' project automatically...")
         try:
+            from neuralclaw.core.projects import create_project
             create_project("default", "Default project created automatically on first setup")
             console.print("[green]✓[/green] Project 'default' created")
         except Exception as e:
@@ -735,8 +250,10 @@ def init(
     
     console.print()
     
+    console.print()
+    
     # ═══════════════════════════════════════════════════════════════════════
-    # STEP 3: AI Adapters
+    # STEP 4: Adapter selection
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold]Step 3: AI Adapters[/bold]",
@@ -747,6 +264,10 @@ def init(
     if non_interactive:
         enabled_adapters = ["openclaw", "claude", "chatgpt"]
     else:
+        console.print("  [dim](Press SPACE to toggle, ENTER to confirm)[/dim]")
+        console.print()
+        
+        # Use default selections
         adapters_available = [
             ("openclaw", "OpenClaw — Local agent framework"),
             ("claude", "Claude — Anthropic's Claude"),
@@ -764,7 +285,7 @@ def init(
     console.print()
     
     # ═══════════════════════════════════════════════════════════════════════
-    # STEP 4: Ollama (optional)
+    # STEP 5: Ollama (optional)
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold]Step 4: Ollama Integration (Optional)[/bold]",
@@ -786,7 +307,7 @@ def init(
     console.print()
     
     # ═══════════════════════════════════════════════════════════════════════
-    # COMPLETION — WITH ONBOARDING CHECKLIST
+    # COMPLETION
     # ═══════════════════════════════════════════════════════════════════════
     console.print(Panel.fit(
         "[bold green]✅ NeuralClaw Setup Complete![/bold green]",
@@ -810,140 +331,61 @@ def init(
         console.print(f"  {line}")
     
     console.print()
-    
-    # ═══════════════════════════════════════════════════════════════════════
-    # ONBOARDING CHECKLIST
-    # ═══════════════════════════════════════════════════════════════════════
-    console.print(Panel.fit(
-        "[bold]📋 Your Next Steps[/bold]\n\n"
-        "[cyan]1.[/cyan] Add your first context item:\n"
-        "      neuralclaw add [yellow]\"MY_KEY=my_value\"[/yellow]\n\n"
-        "[cyan]2.[/cyan] Try smart shortcuts (auto-detect type):\n"
-        "      neuralclaw add [yellow]\"decision: use Postgres for DB\"[/yellow]\n\n"
-        "[cyan]3.[/cyan] Search what you saved:\n"
-        "      neuralclaw search [yellow]keyword[/yellow]\n\n"
-        "[cyan]4.[/cyan] Export context for an AI agent:\n"
-        "      neuralclaw context --project default --task [yellow]\"my task\"[/yellow]\n\n"
-        "[cyan]5.[/cyan] Run a health check:\n"
-        "      neuralclaw doctor\n\n"
-        "[cyan]6.[/cyan] See more examples:\n"
-        "      neuralclaw examples\n\n"
-        "[dim]Or run the interactive tutorial: neuralclaw tutorial[/dim]",
-        title="🚀 Onboarding Checklist",
-        border_style="cyan",
-        padding=1,
-    ))
-    
+    console.print("[bold]Quick start:[/bold]")
+    console.print("  [cyan]neuralclaw add[/cyan] 'my_key=my_value' --project my-first-project")
+    console.print("  [cyan]neuralclaw project list[/cyan]")
+    console.print("  [cyan]neuralclaw --help[/cyan]")
     console.print()
-    
-    if not non_interactive:
-        run_tutorial = Confirm.ask(
-            "[cyan]¿Querés ejecutar el tutorial interactivo?[/cyan]",
-            default=True
-        )
-        if run_tutorial:
-            console.print()
-            tutorial()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# ADD COMMAND — With smart inference
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── ADD ──────────────────────────────────────────────────────────────────────
 
 @app.command()
 def add(
-    item: str = typer.Argument(..., help="Context item. Formats: 'key=value', 'key:value', or free text"),
+    item: str = typer.Argument(..., help="Context item as 'key=value' or 'key:value' format"),
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name or ID"),
-    item_type: str = typer.Option(None, "--type", "-t", help="Type: note, decision, error, variable, preference, process, industry"),
+    item_type: str = typer.Option("note", "--type", "-t", help="Type: note, decision, error, variable, preference"),
     tags: str = typer.Option("", "--tags", help="Comma-separated tags"),
     stale_after: Optional[int] = typer.Option(None, "--stale-after", help="Unix timestamp after which item is stale"),
     confidence: float = typer.Option(1.0, "--confidence", help="Confidence 0.0-1.0"),
     state: str = typer.Option("active", "--state", "-s", help="State: active, stale, verified, deprecated, archived, conflicting"),
-    interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive mode with prompts"),
 ):
-    """Add a context item.
-    
-    Smart inference: type is auto-detected from content when not specified.
-    
-    Examples:
-      neuralclaw add "DATABASE_URL=postgres://localhost/mydb"
-      neuralclaw add "decision: use Redis for cache" --tags architecture
-      neuralclaw add "Error: timeout on /api/auth" --type error
-      neuralclaw add "deploy: run migrate.sh before shipping" --type process
-    """
-    # Parse key/value
+    """Add a context item."""
     if "=" in item:
         key, value = item.split("=", 1)
     elif ":" in item:
         key, value = item.split(":", 1)
     else:
-        key, value = item, ""
-    
-    key, value = key.strip(), value.strip()
-    
-    # Smart type inference
-    if item_type is None:
-        inferred_type, inferred_tags, _ = _infer_type_from_content(item)
-        if inferred_type != "note" or inferred_tags:
-            console.print(f"[dim]💡 Auto-detected type: {inferred_type}[/dim]")
-            if inferred_tags and not tags:
-                tags = ",".join(inferred_tags)
-                console.print(f"[dim]   Suggested tags: {tags}[/dim]")
-        item_type = inferred_type
-    
-    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    
-    # Interactive mode
-    if interactive or (not key and not value):
-        console.print("[cyan]Interactive mode - Add context item[/cyan]")
-        if not key:
-            key = Prompt.ask("Key (e.g. DATABASE_URL)")
-        if not value:
-            value = Prompt.ask("Value")
-        if item_type is None or item_type == "note":
-            type_options = ["note", "decision", "error", "variable", "preference", "process", "industry"]
-            item_type = Prompt.ask("Type", choices=type_options, default="note")
-        if not tags:
-            tags = Prompt.ask("Tags (comma-separated, optional)", default="")
-            tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-    
-    if not key:
-        console.print("[red]Error:[/red] Key cannot be empty")
+        console.print("[red]Error:[/red] Item must be 'key=value' or 'key:value' format")
         raise typer.Exit(1)
-    
-    # Project validation with suggestion
+
+    key, value = key.strip(), value.strip()
+
     project_id = None
     if project:
         if not project_exists(project):
-            console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
+            console.print(f"[red]Error:[/red] Project '{project}' not found. Use 'neuralclaw project create' first.")
             raise typer.Exit(1)
         project_id = get_project(project)["id"]
-    
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+
     item_id = add_context_item(
         project_id=project_id, key=key, value=value,
         item_type=item_type, state=state, tags=tag_list,
         stale_after=stale_after, confidence=confidence,
     )
-    
-    if not QUIET:
-        console.print(f"[green]✓[/green] Added [bold]{key}[/bold]")
-        if not VERBOSE:
-            console.print(f"  ID: {item_id}")
-            console.print(f"  Type: {item_type} | State: {state}")
-            if project:
-                console.print(f"  Project: {project}")
-            if tag_list:
-                console.print(f"  Tags: {', '.join(tag_list)}")
-    
-    # Smart tip
-    if item_type == "note" and not tags:
-        console.print("[dim]💡 Tip: For decisions use 'decision:' prefix, for errors use 'Error:'[/dim]")
+
+    console.print(f"[green]✓[/green] Added context item [bold]{key}[/bold]")
+    console.print(f"  ID: {item_id}")
+    if project:
+        console.print(f"  Project: {project}")
+    console.print(f"  Type: {item_type} | State: {state}")
+    if tag_list:
+        console.print(f"  Tags: {', '.join(tag_list)}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SEARCH COMMAND — With interactive mode
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── SEARCH ───────────────────────────────────────────────────────────────────
 
 @app.command()
 def search(
@@ -957,31 +399,18 @@ def search(
     method: str = typer.Option("auto", "--method", "-m", help="Search method: auto, keyword, fts, embeddings"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     use_fts: bool = typer.Option(False, "--use-fts", help="Force FTS5 full-text search"),
-    interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive search mode"),
 ):
-    """Search context items.
-    
-    Examples:
-      neuralclaw search database
-      neuralclaw search "error" --type error --project mi-app
-      neuralclaw search --interactive
-      neuralclaw search --type decision --limit 20
-    """
-    # Interactive mode
-    if interactive:
-        _run_interactive_search()
-        return
-    
+    """Search context items."""
     project_id = None
     if project:
         if not project_exists(project):
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         project_id = get_project(project)["id"]
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
 
+    # Normalize method
     if use_fts:
         search_method = "fts"
     elif method == "auto":
@@ -995,6 +424,7 @@ def search(
         method=search_method,
     )
 
+    # Run plugin hooks on search results
     results = run_context_search_hooks(query=query or None, project_id=project_id, results=results)
 
     if json_output:
@@ -1006,8 +436,6 @@ def search(
             console.print(f"[dim]No more results (page offset: {offset})[/dim]")
         else:
             console.print("[dim]No results found[/dim]")
-            if query:
-                console.print(f"[dim]💡 Try 'neuralclaw suggest \"{query}\"' for semantic search[/dim]")
         return
 
     if offset > 0:
@@ -1028,122 +456,7 @@ def search(
     console.print(table)
 
 
-def _run_interactive_search():
-    """Interactive search mode with filters and pagination."""
-    from rich.prompt import Prompt
-    from rich.console import Console as RichConsole
-    
-    console.print(Panel.fit(
-        "[bold cyan]🔍 Interactive Search[/bold cyan]\n\n"
-        "[dim]Search your context items interactively[/dim]\n"
-        "[dim]Press Ctrl+C to exit[/dim]",
-        border_style="cyan",
-    ))
-    console.print()
-    
-    # Current filters
-    filters = {
-        "query": "",
-        "project": None,
-        "type": None,
-        "state": None,
-        "tags": None,
-        "limit": 20,
-        "offset": 0,
-    }
-    
-    while True:
-        # Build display
-        console.print(f"\n[bold]Query:[/bold] {filters['query'] or '[dim](empty)[/dim]'}")
-        if filters["project"]:
-            console.print(f"[bold]Project:[/bold] {filters['project']}")
-        if filters["type"]:
-            console.print(f"[bold]Type:[/bold] {filters['type']}")
-        if filters["state"]:
-            console.print(f"[bold]State:[/bold] {filters['state']}")
-        console.print(f"[bold]Limit:[/bold] {filters['limit']} | [bold]Offset:[/bold] {filters['offset']}")
-        console.print()
-        
-        # Execute search
-        project_id = None
-        if filters["project"]:
-            proj = get_project(filters["project"])
-            if proj:
-                project_id = proj["id"]
-        
-        tag_list = filters["tags"].split(",") if filters["tags"] else None
-        
-        results = search_context_smart(
-            query=filters["query"] or None,
-            project_id=project_id,
-            state=filters["state"],
-            item_type=filters["type"],
-            tags=tag_list,
-            limit=filters["limit"],
-            offset=filters["offset"],
-            method="auto",
-        )
-        
-        if not results:
-            console.print("[dim]No results found[/dim]")
-        else:
-            console.print(f"[dim]Found {len(results)} results[/dim]\n")
-            table = Table(box=None)
-            table.add_column("Key", style="cyan")
-            table.add_column("Value", style="white", no_wrap=False)
-            table.add_column("Type", style="magenta")
-            table.add_column("State", style="green")
-            
-            for r in results:
-                value_short = r["value"][:40] + "..." if len(r["value"]) > 40 else r["value"]
-                table.add_row(r["key"], value_short, r["type"], r["state"])
-            console.print(table)
-        
-        console.print()
-        console.print("[cyan]Commands:[/cyan] [bold]q[/bold] quit  [bold]query[/bold] <text>  [bold]proj[/bold] <name>  [bold]type[/bold] <type>  [bold]state[/bold] <state>  [bold]tags[/bold] <tags>  [bold]+[/bold] [bold]-[/bold]")
-        
-        try:
-            cmd = Prompt.ask("\n[cyan]>[/cyan] ", default="")
-        except (KeyboardInterrupt, EOFError):
-            console.print("\n[dim]Search exited.[/dim]\n")
-            break
-        
-        cmd = cmd.strip()
-        if not cmd:
-            continue
-        
-        parts = cmd.split(None, 1)
-        action = parts[0].lower()
-        arg = parts[1] if len(parts) > 1 else ""
-        
-        if action == "q":
-            break
-        elif action == "query":
-            filters["query"] = arg
-            filters["offset"] = 0
-        elif action == "proj":
-            filters["project"] = arg if arg else None
-            filters["offset"] = 0
-        elif action == "type":
-            filters["type"] = arg if arg else None
-            filters["offset"] = 0
-        elif action == "state":
-            filters["state"] = arg if arg else None
-            filters["offset"] = 0
-        elif action == "tags":
-            filters["tags"] = arg if arg else None
-            filters["offset"] = 0
-        elif action == "+":
-            filters["offset"] += filters["limit"]
-        elif action == "-":
-            filters["offset"] = max(0, filters["offset"] - filters["limit"])
-        elif action == "clear":
-            filters = {"query": "", "project": None, "type": None, "state": None, "tags": None, "limit": 20, "offset": 0}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# CONTEXT COMMAND
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── CONTEXT ────────────────────────────────────────────────────────────────────
 
 @app.command()
 def context(
@@ -1159,7 +472,6 @@ def context(
     if project:
         if not project_exists(project):
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         project_id = get_project(project)["id"]
 
@@ -1168,6 +480,7 @@ def context(
             task=task, project_id=project_id,
             adapter_name=adapter, include_vars=include_vars, query=query,
         )
+        # Run plugin export hooks on the JSON string
         if json_output:
             import json as _json
             export_data = _json.loads(json_str)
@@ -1179,30 +492,21 @@ def context(
         raise typer.Exit(1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PROJECT SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── PROJECT SUB-GROUP ─────────────────────────────────────────────────────────
 
 @project_app.command(name="create")
 def project_create(
     name: str = typer.Argument(..., help="Project name"),
     description: str = typer.Option("", "--description", "-d", help="Project description"),
 ):
-    """Create a new project.
-    
-    Examples:
-      neuralclaw project create "mi-proyecto" --description "Mi primer proyecto"
-      neuralclaw project create backend --description "API backend service"
-    """
+    """Create a new project."""
     try:
         project_id = create_project(name, description)
         console.print(f"[green]✓[/green] Project [bold]{name}[/bold] created")
-        if VERBOSE:
-            console.print(f"  ID: {project_id}")
+        console.print(f"  ID: {project_id}")
     except Exception as e:
         if "UNIQUE constraint" in str(e):
             console.print(f"[red]Error:[/red] Project '{name}' already exists.")
-            _print_suggestion_hint(name)
         else:
             raise
 
@@ -1211,12 +515,7 @@ def project_create(
 def project_list(
     status: Optional[str] = typer.Option(None, "--status", "-s", help="Filter: active, archived"),
 ):
-    """List all projects.
-    
-    Examples:
-      neuralclaw project list
-      neuralclaw project list --status archived
-    """
+    """List all projects."""
     projects = list_projects(status=status)
     if not projects:
         console.print("[dim]No projects found[/dim]")
@@ -1236,15 +535,10 @@ def project_list(
 
 @project_app.command(name="archive")
 def project_archive(name: str = typer.Argument(..., help="Project name or ID")):
-    """Archive a project.
-    
-    Examples:
-      neuralclaw project archive mi-proyecto
-    """
+    """Archive a project."""
     project = get_project(name)
     if not project:
         console.print(f"[red]Error:[/red] Project '{name}' not found.")
-        _print_suggestion_hint(name)
         raise typer.Exit(1)
     if project["status"] == "archived":
         console.print(f"[yellow]Project '{project['name']}' is already archived[/yellow]")
@@ -1258,16 +552,10 @@ def project_delete(
     name: str = typer.Argument(..., help="Project name or ID"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ):
-    """Delete a project and all its context items.
-    
-    Examples:
-      neuralclaw project delete mi-proyecto
-      neuralclaw project delete mi-proyecto --force
-    """
+    """Delete a project and all its context items."""
     project = get_project(name)
     if not project:
         console.print(f"[red]Error:[/red] Project '{name}' not found.")
-        _print_suggestion_hint(name)
         raise typer.Exit(1)
     if not force and not Confirm.ask(f"Delete project [bold]{project['name']}[/bold] and ALL its context items?"):
         console.print("[yellow]Cancelled[/yellow]")
@@ -1278,15 +566,10 @@ def project_delete(
 
 @project_app.command(name="status")
 def project_status(name: str = typer.Argument(..., help="Project name or ID")):
-    """Show project status.
-    
-    Examples:
-      neuralclaw project status mi-proyecto
-    """
+    """Show project status."""
     project = get_project(name)
     if not project:
         console.print(f"[red]Error:[/red] Project '{name}' not found.")
-        _print_suggestion_hint(name)
         raise typer.Exit(1)
 
     total = count_context_items(project_id=project["id"])
@@ -1301,21 +584,14 @@ def project_status(name: str = typer.Argument(..., help="Project name or ID")):
         console.print(f"  Description: {project['description']}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# VAULT SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── VAULT SUB-GROUP ──────────────────────────────────────────────────────────
 
 @vault_app.command(name="set")
 def vault_set_cmd(
     name: str = typer.Argument(..., help="Secret name (e.g. OPENAI_API_KEY)"),
     value: Optional[str] = typer.Argument(None, help="Secret value (will prompt if not provided)"),
 ):
-    """Store a secret in the vault.
-    
-    Examples:
-      neuralclaw vault set OPENAI_API_KEY sk-...
-      echo "my-secret" | neuralclaw vault set MY_KEY
-    """
+    """Store a secret in the vault."""
     if not value:
         value = Prompt.ask(f"Enter value for [bold]{name}[/bold]", password=True)
     vault_set(name.upper(), value)
@@ -1327,12 +603,7 @@ def vault_get_cmd(
     name: str = typer.Argument(..., help="Secret name"),
     reveal: bool = typer.Option(False, "--reveal", help="Show the actual value"),
 ):
-    """Retrieve a secret from the vault.
-    
-    Examples:
-      neuralclaw vault get OPENAI_API_KEY
-      neuralclaw vault get OPENAI_API_KEY --reveal
-    """
+    """Retrieve a secret from the vault."""
     val = vault_get(name.upper())
     if val is None:
         console.print(f"[red]Error:[/red] Secret '{name}' not found.")
@@ -1345,11 +616,7 @@ def vault_get_cmd(
 
 @vault_app.command(name="list")
 def vault_list_cmd():
-    """List all secrets (names only).
-    
-    Examples:
-      neuralclaw vault list
-    """
+    """List all secrets (names only)."""
     if not vault_exists():
         console.print("[dim]Vault not initialized[/dim]")
         return
@@ -1369,12 +636,7 @@ def vault_delete_cmd(
     name: str = typer.Argument(..., help="Secret name"),
     force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
 ):
-    """Delete a secret from the vault.
-    
-    Examples:
-      neuralclaw vault delete OPENAI_API_KEY
-      neuralclaw vault delete OPENAI_API_KEY --force
-    """
+    """Delete a secret from the vault."""
     if not vault_exists() or vault_get(name.upper()) is None:
         console.print(f"[red]Error:[/red] Secret '{name}' not found.")
         raise typer.Exit(1)
@@ -1387,11 +649,7 @@ def vault_delete_cmd(
 
 @vault_app.command(name="status")
 def vault_status_cmd():
-    """Show vault status.
-    
-    Examples:
-      neuralclaw vault status
-    """
+    """Show vault status."""
     if not vault_exists():
         console.print("[yellow]Vault not initialized (run 'neuralclaw init')[/yellow]")
         return
@@ -1400,9 +658,7 @@ def vault_status_cmd():
     console.print(f"  Secrets stored: {len(secrets)}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# FRESH COMMAND
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── FRESH ───────────────────────────────────────────────────────────────────
 
 @app.command()
 def fresh(
@@ -1417,10 +673,7 @@ def fresh(
     FreshApple = markdown snapshot of active context including projects,
     next steps, risks, recent errors, and key context.
 
-    Examples:
-      neuralclaw fresh --project mi-app
-      neuralclaw fresh --project mi-app --regenerate
-      neuralclaw fresh --project mi-app --ttl 7200
+    Auto-refresh: if --regenerate is not set, returns cached snapshot if fresh (within TTL).
     """
     project_id = None
     project_name = None
@@ -1428,7 +681,6 @@ def fresh(
     if project:
         if not project_exists(project):
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         proj = get_project(project)
         project_id = proj["id"]
@@ -1439,8 +691,7 @@ def fresh(
         if is_fresh(project_id, ttl_seconds=ttl):
             fa = get_fresh_apple(project_id)
             if fa:
-                if not QUIET:
-                    console.print(f"[dim]FreshApple cached (fresh for {ttl}s)[/dim]")
+                console.print(f"[dim]FreshApple cached (fresh for {ttl}s)[/dim]")
                 if json_output:
                     import json
                     console.print(json.dumps({
@@ -1459,9 +710,9 @@ def fresh(
 
     if save:
         saved_id = save_fresh_apple(project_id, content, auto_refresh=True)
-        if saved_id and not QUIET:
+        if saved_id:
             console.print(f"[green]✓[/green] FreshApple saved to DB (ID: {saved_id[:8]}...)")
-        elif not saved_id:
+        else:
             console.print("[dim]FreshApple generated (global context — not persisted)[/dim]")
 
     if json_output:
@@ -1476,9 +727,7 @@ def fresh(
         console.print(content)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# IMPORT COMMAND
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── IMPORT ────────────────────────────────────────────────────────────────────
 
 @app.command()
 def import_cmd(
@@ -1486,38 +735,38 @@ def import_cmd(
     project: Optional[str] = typer.Option(None, "--project", "-p", help="Default project for items"),
     batch_size: int = typer.Option(100, "--batch-size", help="Batch size for bulk insert"),
 ):
-    """Bulk import context items from a JSON or JSONL file.
-    
-    Examples:
-      neuralclaw import --from backup.json
-      neuralclaw import --from items.jsonl --project mi-app
-      cat data.json | neuralclaw import --from -
-    """
+    """Bulk import context items from a JSON or JSONL file."""
     from neuralclaw.logging import log_info
 
-    # Handle stdin
-    if from_file == "-":
-        content = sys.stdin.read()
-    else:
-        input_path = Path(from_file)
-        if not input_path.exists():
-            console.print(f"[red]Error:[/red] File not found: {input_path}")
+    input_path = Path(from_file)
+    if not input_path.exists():
+        console.print(f"[red]Error:[/red] File not found: {input_path}")
+        raise typer.Exit(1)
+
+    project_id = None
+    if project:
+        if not project_exists(project):
+            console.print(f"[red]Error:[/red] Project '{project}' not found.")
             raise typer.Exit(1)
-        try:
-            content = input_path.read_text(encoding="utf-8").strip()
-        except Exception as e:
-            console.print(f"[red]Error:[/red] Could not read file: {e}")
-            raise typer.Exit(1)
+        project_id = get_project(project)["id"]
+
+    try:
+        content = input_path.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        console.print(f"[red]Error:[/red] Could not read file: {e}")
+        raise typer.Exit(1)
 
     # Detect format: JSONL if lines, JSON if array
     items = []
     if content.startswith("["):
+        # JSON array
         try:
             items = json.loads(content)
         except json.JSONDecodeError as e:
             console.print(f"[red]Error:[/red] Invalid JSON: {e}")
             raise typer.Exit(1)
     else:
+        # JSONL (newline-delimited JSON)
         for i, line in enumerate(content.split("\n")):
             line = line.strip()
             if not line:
@@ -1532,16 +781,7 @@ def import_cmd(
         console.print("[yellow]No items found in file[/yellow]")
         return
 
-    if not QUIET:
-        console.print(f"[cyan]Importing {len(items)} items...[/cyan]")
-
-    project_id = None
-    if project:
-        if not project_exists(project):
-            console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
-            raise typer.Exit(1)
-        project_id = get_project(project)["id"]
+    console.print(f"[cyan]Importing {len(items)} items...[/cyan]")
 
     # Batch insert
     added = 0
@@ -1577,9 +817,7 @@ def import_cmd(
         console.print(f"[yellow]⚠ {errors} items skipped (missing key/value)[/yellow]")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# BACKUP & RESTORE
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── BACKUP & RESTORE ─────────────────────────────────────────────────────────
 
 @app.command(name="backup")
 def backup_cmd(
@@ -1589,47 +827,50 @@ def backup_cmd(
 ):
     """Export all context items, projects, and vault entries as JSON backup.
     
-    Examples:
-      neuralclaw backup
-      neuralclaw backup --output backup.json
-      neuralclaw backup --project mi-app --output mi-app_backup.json.gz
+    Creates a portable backup file that can be restored with:
+    neuralclaw restore --from backup.json
     """
     import gzip
     from pathlib import Path
     
+    # Get all projects
     projects = list_projects()
     
+    # Get context items
     project_id = None
     if project:
         proj = get_project(project)
         if not proj:
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         project_id = proj["id"]
     
     context_items = get_all_items(project_id=project_id)
     
+    # Get vault entries (metadata only, not values — values stay in vault)
     vault_entries = []
     if vault_exists():
-        vault_entries = vault_list()
+        from neuralclaw.core.vault import vault_list
+        vault_entries = vault_list()  # [{name, type, created_at}]
     
+    # Build backup structure
     backup = {
         "version": "0.4.1",
         "exported_at": datetime.now().isoformat(),
         "projects": projects,
         "context_items": context_items,
-        "vault_metadata": vault_entries,
+        "vault_metadata": vault_entries,  # names/types only, no values
         "schema_version": get_schema_version(),
     }
     
+    # Determine output
     if not output:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = "_" + project if project else ""
-        output = f"neuralclaw_backup_{ts}{suffix}.json"
+        output = f"neuralclaw_backup_{ts}.json"
     
     output_path = Path(output).expanduser()
     
+    # Write backup
     if str(output).endswith(".gz"):
         with gzip.open(output_path, "wt", encoding="utf-8") as f:
             json.dump(backup, f, indent=2 if pretty else None)
@@ -1637,12 +878,11 @@ def backup_cmd(
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(backup, f, indent=2 if pretty else None)
     
-    if not QUIET:
-        console.print(f"[green]✓[/green] Backup saved to [bold]{output_path}[/bold]")
-        console.print(f"  Projects: {len(projects)}")
-        console.print(f"  Context items: {len(context_items)}")
-        console.print(f"  Vault entries: {len(vault_entries)}")
-        console.print("\n[dim]Note: Vault values are NOT exported (security).[/dim]")
+    console.print(f"[green]✓[/green] Backup saved to [bold]{output_path}[/bold]")
+    console.print(f"  Projects: {len(projects)}")
+    console.print(f"  Context items: {len(context_items)}")
+    console.print(f"  Vault entries: {len(vault_entries)}")
+    console.print("\n[dim]Note: Vault values are NOT exported (security). Run 'neuralclaw vault export' separately for secrets.")
 
 
 @app.command(name="restore")
@@ -1653,9 +893,8 @@ def restore_cmd(
 ):
     """Restore context items and projects from a backup file.
     
-    Examples:
-      neuralclaw restore backup_20260427.json
-      neuralclaw restore backup.json --replace
+    Usage:
+    neuralclaw restore backup_20260427.json
     """
     import gzip
     from pathlib import Path
@@ -1665,6 +904,7 @@ def restore_cmd(
         console.print(f"[red]Error:[/red] Backup file not found: {from_file}")
         raise typer.Exit(1)
     
+    # Load backup
     try:
         if str(from_file).endswith(".gz"):
             with gzip.open(backup_path, "rt", encoding="utf-8") as f:
@@ -1676,6 +916,7 @@ def restore_cmd(
         console.print(f"[red]Error:[/red] Could not read backup file: {e}")
         raise typer.Exit(1)
     
+    # Validate backup structure
     if "context_items" not in backup:
         console.print("[red]Error:[/red] Invalid backup file (missing context_items)")
         raise typer.Exit(1)
@@ -1690,12 +931,14 @@ def restore_cmd(
         if not Confirm.ask("Continue?", default=True):
             return
     
+    # Restore projects
     projects_restored = 0
     for proj in backup.get("projects", []):
         if not project_exists(proj["name"]):
             create_project(proj["name"], proj.get("description", ""))
             projects_restored += 1
     
+    # Restore context items
     items_restored = 0
     for item in backup["context_items"]:
         try:
@@ -1703,6 +946,7 @@ def restore_cmd(
             if proj_id:
                 proj = get_project(proj_id)
                 if not proj:
+                    # Project not found, skip
                     continue
             add_context_item(
                 project_id=proj_id,
@@ -1724,9 +968,7 @@ def restore_cmd(
     console.print(f"  Context items restored: {items_restored}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# DELETE CONTEXT ITEM
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── DELETE CONTEXT ITEM ──────────────────────────────────────────────────────
 
 @app.command(name="delete")
 def delete_item_cmd(
@@ -1735,9 +977,7 @@ def delete_item_cmd(
 ):
     """Delete a context item by ID.
     
-    Examples:
-      neuralclaw delete item_id_123
-      neuralclaw search database  # find the ID first
+    Use 'neuralclaw search' to find item IDs first.
     """
     item = get_context_item(item_id)
     if not item:
@@ -1763,24 +1003,25 @@ def delete_item_cmd(
         raise typer.Exit(1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# DOCTOR COMMAND
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── DOCTOR ─────────────────────────────────────────────────────────────────
 
 @app.command()
 def doctor():
     """Run health checks on the NeuralClaw system.
 
-    Examples:
-      neuralclaw doctor
+    Checks:
+    - DB accessible + schema correct
+    - Vault.key exists
+    - FreshApple snapshots fresh (warn if >7 days old)
+    - Items stale >7 days without refresh
+    - Conflicts unresolved (state='conflicting')
+    - usage_logs empty for 30+ days → warning
     """
     results, pass_count, total = run_doctor_checks()
     print_doctor_report(results, pass_count, total)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PLUGIN SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── PLUGIN SUB-GROUP ─────────────────────────────────────────────────────────
 
 @plugin_app.command(name="list")
 def plugin_list():
@@ -1843,9 +1084,7 @@ def plugin_info(name: str = typer.Argument(..., help="Plugin name")):
     console.print(f"  Hooks: {', '.join(spec.hooks.keys()) or '(none)'}")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TRAIN ROOM SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── TRAIN ROOM SUB-GROUP ─────────────────────────────────────────────────────
 
 @train_room_app.command(name="analyze")
 def train_room_analyze(
@@ -1913,9 +1152,7 @@ def train_room_list():
     console.print(table)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PLAYROOM SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── PLAYROOM SUB-GROUP ───────────────────────────────────────────────────────
 
 @playroom_app.command(name="test")
 def playroom_test(
@@ -1929,7 +1166,6 @@ def playroom_test(
     if project:
         if not project_exists(project):
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         project_id = get_project(project)["id"]
 
@@ -1942,9 +1178,7 @@ def playroom_test(
         raise typer.Exit(1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# SUGGEST COMMAND — Semantic search
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── SUGGEST ──────────────────────────────────────────────────────────────────
 
 @app.command()
 def suggest(
@@ -1957,24 +1191,19 @@ def suggest(
 
     Requires Ollama to be running with an embeddings model (e.g. mxbai-embed-large).
     Falls back to keyword search if Ollama is unavailable.
-
-    Examples:
-      neuralclaw suggest "authentication flow"
-      neuralclaw suggest "database connection issues"
     """
     project_id = None
     if project:
         if not project_exists(project):
             console.print(f"[red]Error:[/red] Project '{project}' not found.")
-            _print_suggestion_hint(project)
             raise typer.Exit(1)
         project_id = get_project(project)["id"]
 
-    from neuralclaw.core.context import suggest_context as _suggest_context
-    results = _suggest_context(query=query, project_id=project_id, limit=limit)
+    results = suggest_context(query=query, project_id=project_id, limit=limit)
 
     if not results:
-        # Fall back to keyword search
+        # Fall back to keyword search if embeddings unavailable
+        from neuralclaw.core.search import search_context_keyword
         results = search_context_keyword(
             query=query,
             project_id=project_id,
@@ -2006,9 +1235,7 @@ def suggest(
     console.print(table)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CONFIG SUB-GROUP
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── CONFIG ────────────────────────────────────────────────────────────────────
 
 config_app = typer.Typer(name="config", help="Manage NeuralClaw configuration")
 app.add_typer(config_app)
@@ -2040,6 +1267,7 @@ def config_set(
     from neuralclaw.config import load_config
     config = load_config()
 
+    # Parse dot notation
     parts = key.split(".")
     if len(parts) == 1:
         config.set(key, value)
@@ -2048,6 +1276,7 @@ def config_set(
         subkey = parts[1]
         if section not in config._data:
             config._data[section] = {}
+        # Convert string booleans
         if value.lower() == "true":
             value = True
         elif value.lower() == "false":
@@ -2094,15 +1323,14 @@ def embeddings(
 ):
     """Compute embedding for text using Ollama.
 
-    Examples:
-      neuralclaw embeddings "hello world"
-      neuralclaw embeddings --model nomic-embed-text --pull
+    If no text provided, enters interactive mode.
+    Use --pull to automatically pull the model if not available.
     """
     from neuralclaw.core.embeddings import OllamaEmbeddings
 
     client = OllamaEmbeddings()
     if not client.is_available():
-        console.print(f"[red]✗[/red] Ollama is not running at {client.base_url}")
+        console.print("[red]✗[/red] Ollama is not running at {client.base_url}")
         console.print("  Start with: ollama serve")
         raise typer.Exit(1)
 
@@ -2146,9 +1374,7 @@ def embeddings(
                 break
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════════════
+# ─── MAIN ──────────────────────────────────────────────────────────────────────
 
 @app.callback()
 def callback():
