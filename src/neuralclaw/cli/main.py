@@ -718,7 +718,7 @@ def init(
     
     existing_projects = []
     try:
-        existing_projects = list_projects()
+        existing_projects = list_projects()  # noqa: F823 - imported at module level
     except Exception:
         pass
     
