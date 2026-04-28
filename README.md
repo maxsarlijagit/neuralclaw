@@ -2,8 +2,8 @@
 
 **Local Context OS for AI Agents**
 
-[![PyPI Version](https://img.shields.io/pypi/v/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
-[![Python](https://img.shields.io/pypi/pyversions/neuralclaw.svg)](https://pypi.org/project/neuralclaw/)
+[![PyPI Version](https://img.shields.io/pypi/v/neuralclaw-os.svg)](https://pypi.org/project/neuralclaw-os/)
+[![Python](https://img.shields.io/pypi/pyversions/neuralclaw.svg)](https://pypi.org/project/neuralclaw-os/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml/badge.svg)](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml)
 
@@ -46,7 +46,7 @@ pipx install .
 ### Via pip
 
 ```bash
-pip install neuralclaw
+pip install neuralclaw-os
 ```
 
 ---

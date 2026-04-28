@@ -43,7 +43,7 @@ pipx install .
 #### Method 3: pip
 
 ```bash
-pip install neuralclaw
+pip install neuralclaw-os
 ```
 
 ---
@@ -199,7 +199,7 @@ pipx install .
 #### Método 3: pip
 
 ```bash
-pip install neuralclaw
+pip install neuralclaw-os
 ```
 
 ---
