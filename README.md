@@ -1,319 +1,246 @@
-# NeuralClaw
+<div align="center">
+
+<br/>
+███╗ ██╗███████╗██╗ ██╗██████╗ █████╗ ██╗ ██████╗██╗ █████╗ ██╗ ██╗
+████╗ ██║██╔════╝██║ ██║██╔══██╗██╔══██╗██║ ██╔════╝██║ ██╔══██╗██║ ██║
+██╔██╗ ██║█████╗ ██║ ██║██████╔╝███████║██║ ██║ ██║ ███████║██║ █╗ ██║
+██║╚██╗██║██╔══╝ ██║ ██║██╔══██╗██╔══██║██║ ██║ ██║ ██╔══██║██║███╗██║
+██║ ╚████║███████╗╚██████╔╝██║ ██║██║ ██║███████╗╚██████╗███████╗██║ ██║
+╚███╔███╔╝
+╚═══╝ ╚═══╝╚══════╝ ╚═════╝ ╚═╝ ╚═╝╚══════╝ ╚═════╝╚══════╝╚═╝ ╚═╝
 
 **Local Context OS for AI Agents**
 
-[![PyPI Version](https://img.shields.io/pypi/v/neuralclaw-os.svg)](https://pypi.org/project/neuralclaw-os/)
-[![Python](https://img.shields.io/pypi/pyversions/neuralclaw.svg)](https://pypi.org/project/neuralclaw-os/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Tests](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml/badge.svg)](https://github.com/maxsarlija/neuralclaw/actions/workflows/test.yml)
+<br/>
 
----
+[![PyPI version](https://img.shields.io/pypi/v/neuralclaw-os?color=00ff88&labelColor=0a0a0a&style=flat-square)](https://pypi.org/project/neuralclaw-os/)
+[![Python](https://img.shields.io/pypi/pyversions/neuralclaw-os?color=00ff88&labelColor=0a0a0a&style=flat-square)](https://pypi.org/project/neuralclaw-os/)
+[![License](https://img.shields.io/github/license/maxsarlijagit/neuralclaw?color=00ff88&labelColor=0a0a0a&style=flat-square)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/maxsarlijagit/neuralclaw?color=00ff88&labelColor=0a0a0a&style=flat-square)](https://github.com/maxsarlijagit/neuralclaw)
 
-NeuralClaw is a **local-first context management system** for AI agents. It organizes your projects, memories, variables, errors, decisions, and communication preferences — then delivers exactly the context each AI needs, formatted for their adapter.
-
-**It does not train models. It does not replace ChatGPT, Claude, or OpenClaw. It sits in the middle as a context layer.**
-
----
-
-## Installation
-
-Choose the method that fits your setup:
-
-### Via Git Clone
-
-```bash
-# Clone the repository
-git clone https://github.com/maxsarlija/neuralclaw.git
-cd neuralclaw
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install with all extras
-pip install -e ".[full]"
-
-# Or minimal installation
-pip install -e .
-```
-
-### Via pipx (recommended for global install)
-
-```bash
-pipx install .
-```
-
-### Via pip
-
-```bash
+<br/>
 pip install neuralclaw-os
-```
 
----
+</div>
 
-## First Run Setup
+-----
 
-On first run, NeuralClaw provides an **interactive setup wizard**:
+## The problem
+
+You're mid-session with Claude. You switch to ChatGPT. You open a new agent.
+
+Everything you just built — the context — is gone.
+
+You copy-paste. You re-explain. You lose the thread.
+
+This is the real bottleneck in multi-agent workflows. Not the model. Not the prompt. The context.
+
+-----
+
+## What NeuralClaw does
+
+NeuralClaw is a **Local Context OS for AI Agents** — a CLI that acts as persistent memory across all your AI tools.
+
+You store decisions, errors, variables, and project state once. When you switch agents or start a new session, NeuralClaw formats and delivers the right context automatically — for whichever AI you're using.
+
+- **Local-first.** No cloud. Everything lives on your machine.
+- **Encrypted vault** for secrets and sensitive config.
+- **Multi-adapter output** — exports formatted for OpenClaw, Claude, or ChatGPT.
+- **Semantic search** via Ollama embeddings.
+- **REST API + TUI** for integrations.
+
+-----
+
+## Quickstart
 
 ```bash
+# Install
+pip install neuralclaw-os
+
+# Initialize
 neuralclaw init
+
+# Create a project
+neuralclaw project create my-project
+
+# Add context
+neuralclaw add "Using Pydantic v2 for all models — breaking change from v1" --project my-project
+neuralclaw add "API rate limit is 100 req/min" --type variable --project my-project
+neuralclaw add "Auth tokens expire after 15min — session refresh needed" --type decision --project my-project
+
+# Get context formatted for your AI
+neuralclaw context --project my-project --adapter claude
+
+# Run the interactive tutorial
+neuralclaw tutorial
 ```
 
-The wizard guides you through 4 steps:
+-----
 
-```
-┌─────────────────────────────────────────────────────────┐
-│           🤖 NeuralClaw First Run Setup                 │
-├─────────────────────────────────────────────────────────┤
-│  Step 1: System Initialization                         │
-│           → Creates config, database, vault            │
-│                                                         │
-│  Step 2: Auto-Setup Projects                           │
-│           → Scans for projects, creates 'default'       │
-│                                                         │
-│  Step 3: AI Adapter Selection                          │
-│           → OpenClaw, Claude, ChatGPT                  │
-│                                                         │
-│  Step 4: Ollama Integration (Optional)                 │
-│           → Enable semantic search                     │
-│                                                         │
-│                    ✅ Setup Complete!                   │
-└─────────────────────────────────────────────────────────┘
-```
+## Feature Reference
 
-Use `--yes` or `-y` flag for non-interactive/automated setup:
+### Context Management
 
-```bash
-neuralclaw init -y
-```
+|Command |Description |
+|---------|------------------------------------------------|
+|`add` |Add context item (smart type inference) |
+|`search` |Search with filters + interactive mode |
+|`suggest`|Semantic search via Ollama embeddings |
+|`context`|Export formatted for OpenClaw / Claude / ChatGPT|
+|`fresh` |FreshApple markdown snapshots (TTL cache) |
+|`delete` |Delete context item by ID |
 
----
+Context types: note · decision · error · variable · preference · process · industry
 
-## Quick Start
+States: active · stale · verified · deprecated · archived · conflicting
 
-Add your first context item:
+Adapters: openclaw · claude · chatgpt
 
-```bash
-neuralclaw add "DATABASE_URL=postgres://localhost/mydb" --type variable --tags prod,database
-neuralclaw add "decision: use Redis for session cache" --project myapp --tags architecture
-neuralclaw add "Error: timeout on /api/auth" --type error --tags auth,prod
-```
-
-Export context for any AI agent:
-
-```bash
-neuralclaw context --project myapp --task "implement login" --adapter openclaw
-neuralclaw context --project myapp --task "code review" --adapter claude
-neuralclaw context --project myapp --task "write tests" --adapter chatgpt
-```
-
-**Search with pagination (limit + offset):**
-```bash
-neuralclaw search "database" --limit 50 --offset 0    # First page
-neuralclaw search "database" --limit 50 --offset 50   # Second page
-```
-
----
-
-## Why NeuralClaw?
-
-When working with multiple AI agents, each needs different context. Sending everything to everyone is expensive. Sending nothing means they start from scratch.
-
-NeuralClaw solves this by:
-
-- **Centralizing** project context, decisions, and variables
-- **Encrypting** secrets (API keys, tokens) safely in a local vault
-- **Routing** the right context to the right agent via adapters
-- **Staying local** — no cloud, no sync, no external dependencies
-
----
-
-## Core Concepts
+-----
 
 ### Projects
 
-Projects group context items together:
+|Command |Description |
+|---------|--------------------------|
+|`project create` |Create project |
+|`project list` |List all projects |
+|`project status` |Stats + item counts |
+|`project archive`|Archive project |
+|`project delete` |Delete project + all items|
 
-```bash
-neuralclaw project create "backend-api"
-neuralclaw project list
-neuralclaw project status "backend-api"
-neuralclaw project archive "old-project"
-```
+-----
 
-### Context Items
+### Vault — Encrypted Secrets
 
-Every piece of information stored is a **context item** with:
+|Command |Description |
+|---------|--------------------------|
+|`vault set` |Store secret |
+|`vault get` |Retrieve secret |
+|`vault list` |List secrets (names only)|
+|`vault delete`|Delete secret |
+|`vault status`|Health check |
 
-| Field | Description |
-|-------|-------------|
-| `key` | Identifier (e.g., `DATABASE_URL`) |
-| `value` | The actual data |
-| `type` | `note`, `variable`, `decision`, `error`, `preference` |
-| `state` | `active`, `stale`, `deprecated`, `archived`, `verified` |
-| `tags` | Labels for filtering |
-| `project` | Associated project |
-| `confidence` | Trust level (0-1) |
+-----
 
-### States
+### Backup & Import
 
-| State | Include in exports? | Action |
-|-------|---------------------|--------|
-| `active` | ✅ By default | Use normally |
-| `verified` | ✅ High priority | High confidence |
-| `stale` | ⚠️ With warning | Verify before using |
-| `conflicting` | ⚠️ With warning | Escalate to agent |
-| `deprecated` | ❌ Unless requested | Skip |
-| `archived` | ❌ Unless requested | Skip |
-| `old_school` | ❌ On-demand only | Load when needed |
+|Command |Description |
+|---------|----------------------|
+|`backup` |Export all (JSON/GZ) |
+|`restore`|Restore from backup |
+|`import` |Bulk import JSON/JSONL |
 
-### Vault
+-----
 
-Encrypted secret storage — values encrypted with Fernet, never exposed unless requested:
+### System
 
-```bash
-neuralclaw vault set OPENAI_API_KEY "sk-..."
-neuralclaw vault list
-neuralclaw vault get OPENAI_API_KEY --reveal
-neuralclaw vault delete OLD_API_KEY
-```
+|Command |Description |
+|---------|------------------------|
+|`init` |Initialize NeuralClaw |
+|`status` |Quick dashboard overview|
+|`doctor` |Health checks |
+|`version`|Version info |
 
----
+-----
 
-## Commands Overview
+### Learning & Testing
 
-```
-init           Initialize NeuralClaw (interactive wizard)
-add            Add a context item (key=value format)
-search         Search context items with filters
-context        Export context as JSON for an AI agent
+|Command |Description |
+|---------|---------------------------------------|
+|`tutorial` |Interactive walkthrough |
+|`examples` |Real-world usage examples |
+|`train-room analyze`|Analyze samples → communication profile|
+|`train-room list` |List saved profiles |
+|`playroom test` |Test prompt across adapters |
 
-project        Manage projects (create, list, archive, delete, status)
-vault          Manage encrypted secrets (set, get, list, delete)
-plugin         Manage plugins
+-----
 
-fresh          Generate FreshApple snapshots (TTL-based context)
-doctor         Run health checks (stale detection, schema validation)
-suggest        Semantic search using Ollama embeddings
-embeddings     Compute embeddings for text
+### Integrations
 
-train-room     Generate communication profiles from samples
-playroom       Test adapters side-by-side with prompt comparison
+|Command |Description |
+|---------|--------------------------------|
+|`serve` |FastAPI REST API + web dashboard|
+|`tui` |Interactive terminal UI |
+|`embeddings` |Compute Ollama embeddings |
+|`install-completion`|Shell completion (bash/zsh/fish)|
 
-tui            Launch interactive Text User Interface
-serve          Start FastAPI REST API server with web dashboard
-config         Manage NeuralClaw configuration
+-----
 
-import-cmd     Bulk import from JSON/JSONL files
-```
+### Plugins
 
----
+|Command |Description |
+|---------|--------------|
+|`plugin list` |List plugins |
+|`plugin enable/disable`|Toggle plugin |
+|`plugin info` |Plugin details|
 
-## Architecture
+-----
 
-```
-neuralclaw/
-├── src/neuralclaw/
-│   ├── cli/main.py          # CLI entry point (Typer + Rich)
-│   ├── core/
-│   │   ├── context.py       # CRUD for context items
-│   │   ├── projects.py      # Project management
-│   │   ├── vault.py         # Encrypted secrets (Fernet)
-│   │   ├── search.py        # Smart search with FTS5
-│   │   ├── bridge.py        # Context export per adapter
-│   │   ├── embeddings.py    # Ollama integration
-│   │   ├── fresh.py         # FreshApple snapshots
-│   │   ├── doctor.py        # Health check system
-│   │   ├── train_room.py    # Communication profiles
-│   │   └── playroom.py      # Adapter testing
-│   ├── db/
-│   │   └── connection.py    # SQLite + migrations
-│   ├── adapters/            # YAML configs per LLM
-│   │   ├── openclaw.yaml
-│   │   ├── chatgpt.yaml
-│   │   └── claude.yaml
-│   ├── api/server.py        # FastAPI REST API
-│   └── ui/
-│       ├── tui.py            # Text User Interface
-│       └── dashboard.py      # Web dashboard
-├── tests/                   # 160 tests (all passing)
-├── brain/                   # Decision log
-├── SPEC.md                  # Design specification
-└── CHANGELOG.md
-```
+### Configuration
 
-### Database
+|Command |Description |
+|---------|-------------|
+|`config show` |Show config |
+|`config set` |Set value |
+|`config ollama-status`|Ollama health|
 
-SQLite with 10+ tables: projects, context_items, context_links, errors, decisions, usage_logs, model_profiles, fresh_apple, vault_entries, schema_version, context_fts, embeddings_cache.
+-----
 
----
+## Why local-first
 
-## Adapters
+Most AI tooling assumes you live inside one ecosystem. NeuralClaw assumes you don't.
 
-Adapters define how context is formatted for each AI system:
+Your context is yours. It never leaves your machine. No account. No API key for NeuralClaw itself. No sync service watching your decisions and errors.
 
-| Adapter | Tokens | Variables | Style |
-|---------|--------|-----------|-------|
-| **openclaw** | 200k | revealed | direct |
-| **chatgpt** | 128k | hidden | conversational |
-| **claude** | 200k | hidden | technical |
+The vault uses encryption at rest. The backup format is open JSON — you can read it, port it, version it.
 
----
+-----
 
-## Security
+## What's new in v0.4.1
 
-- **Fernet symmetric encryption** for vault secrets
-- Key stored at `~/.config/neuralclaw/vault.key` (mode 0600)
-- Values encrypted; names stored as plaintext
-- Graceful degradation: wrong key returns `None`
-- **Local-only** — no cloud sync, all data stays on your machine
+- **Smart type inference** — add auto-detects variable / decision / error from natural language
+- **Interactive search mode** — navigate results without leaving the CLI
+- **`neuralclaw tutorial`** — step-by-step interactive walkthrough
+- **`neuralclaw examples`** — real-world usage examples
+- **Shell completion installer** — bash, zsh, and fish support via `install-completion`
+- **`neuralclaw status`** — quick system dashboard
+- **Verbose and quiet output modes** (`--verbose` / `--quiet`)
 
----
+-----
 
-## Tech Stack
+## Roadmap
 
-| Component | Technology |
-|-----------|------------|
-| Language | Python 3.11+ |
-| CLI | [Typer](https://typer.tiangolo.com/) + [Rich](https://github.com/Textualize/rich) |
-| Database | SQLite (local) |
-| Encryption | [cryptography](https://cryptography.io/) (Fernet) |
-| Search | FTS5 Full-Text Search |
-| Embeddings | [Ollama](https://ollama.ai/) (optional) |
-| API | FastAPI (optional) |
-| UI | Rich-based TUI |
+- [ ] VS Code extension
+- [ ] More adapters (Gemini, Mistral, local Ollama agents)
+- [ ] Context diff — track how decisions evolve over time
+- [ ] Team mode (optional, self-hosted)
 
----
-
-## Version History
-
-| Version | Date | Status |
-|---------|------|--------|
-| 0.4.1 | 2026-04-27 | Current — Interactive wizard, README updates |
-| 0.4.0 | 2026-04-26 | Ollama embeddings, Fresh & Doctor |
-| 0.3.0 | 2026-04-26 | Plugin system, Train Room, Playroom |
-| 0.2.0 | 2026-04-26 | FreshApple snapshots, health checks |
-| 0.1.0 | 2026-04-26 | MVP — init, add, search, vault, context |
-
----
+-----
 
 ## Contributing
 
+PRs welcome. Open an issue first for large changes.
+
 ```bash
-git clone https://github.com/maxsarlija/neuralclaw.git
+git clone https://github.com/maxsarlijagit/neuralclaw
 cd neuralclaw
-python3 -m venv venv
-source venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest tests/ -v
 ```
 
----
+-----
 
 ## License
 
-MIT License — see [LICENSE](LICENSE) file.
+MIT — see <LICENSE>
 
----
+-----
 
-*NeuralClaw: Give your AI agents exactly the context they need, nothing more.*
+<div align="center">
+
+Built by [Max Sarlija](https://github.com/maxsarlijagit) · [PyPI](https://pypi.org/project/neuralclaw-os/) · [Issues](https://github.com/maxsarlijagit/neuralclaw/issues)
+
+<br/>
+
+*Stop copying context. Start building.*
+
+</div>
