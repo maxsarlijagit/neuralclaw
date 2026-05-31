@@ -183,7 +183,10 @@ neuralclaw init
 neuralclaw cc install --project my-project   # then restart Claude Code
 ```
 
-The same principles NeuralClaw uses elsewhere — relevance + recency + state ranking, token budgeting, stale flagging, progressive disclosure — are tuned here for an agentic coding session. See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md).
+The same principles NeuralClaw uses elsewhere — relevance + recency + state ranking, token budgeting, stale flagging, progressive disclosure — are tuned here for an agentic coding session.
+
+📖 **Tutorial completo (ES):** [GUIA_CLAUDE.md](GUIA_CLAUDE.md) — instalación, uso en Claude Code, Claude Desktop y claude.ai, paso a paso.
+📖 **Reference (EN):** [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md).
 
 -----
 
