@@ -52,17 +52,23 @@ embeddings = [
     "requests>=2.31.0",
     "numpy>=1.26.0",
 ]
+claude-code = [
+    "mcp>=1.2.0",
+]
 full = [
     "requests>=2.31.0",
     "numpy>=1.26.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
     "jinja2>=3.1.0",
+    "mcp>=1.2.0",
 ]
 
 
 [project.scripts]
 neuralclaw = "neuralclaw.cli.main:app"
+neuralclaw-cc-memory = "neuralclaw.integrations.claude_code.mcp_server:main"
+neuralclaw-cc-hook = "neuralclaw.integrations.claude_code.hook:main"
 
 [project.entry-points."neuralclaw.plugins"]
 audit = "neuralclaw.plugins.builtins.audit:hooks"

@@ -166,6 +166,30 @@ Adapters: openclaw · claude · chatgpt
 
 -----
 
+### Claude Code — Active Memory
+
+Use NeuralClaw as **persistent, token-optimized memory for Claude Code**: auto-recall at session start, plus MCP tools to read/write memory mid-session.
+
+|Command |Description |
+|---------|----------------------------------------------|
+|`cc install` |Wire into a project (.mcp.json + hook + CLAUDE.md)|
+|`cc recall` |Token-budgeted, ranked memory for a task |
+|`cc remember`|Persist a decision/error/variable |
+|`cc snapshot`|FreshApple snapshot of active context |
+
+```bash
+pip install "neuralclaw-os[claude-code]"
+neuralclaw init
+neuralclaw cc install --project my-project   # then restart Claude Code
+```
+
+The same principles NeuralClaw uses elsewhere — relevance + recency + state ranking, token budgeting, stale flagging, progressive disclosure — are tuned here for an agentic coding session.
+
+📖 **Tutorial completo (ES):** [GUIA_CLAUDE.md](GUIA_CLAUDE.md) — instalación, uso en Claude Code, Claude Desktop y claude.ai, paso a paso.
+📖 **Reference (EN):** [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md).
+
+-----
+
 ### Plugins
 
 |Command |Description |

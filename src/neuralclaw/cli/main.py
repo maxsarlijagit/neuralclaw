@@ -131,12 +131,14 @@ vault_app = typer.Typer(name="vault", help="Manage encrypted secrets")
 plugin_app = typer.Typer(name="plugin", help="Manage plugins")
 train_room_app = typer.Typer(name="train-room", help="Train Room — analyze samples and generate profiles")
 playroom_app = typer.Typer(name="playroom", help="Playroom — test adapters side-by-side")
+cc_app = typer.Typer(name="cc", help="Claude Code — use NeuralClaw as active, token-optimized memory")
 
 app.add_typer(project_app)
 app.add_typer(vault_app)
 app.add_typer(plugin_app)
 app.add_typer(train_room_app)
 app.add_typer(playroom_app)
+app.add_typer(cc_app)
 
 console = Console()
 
@@ -2004,6 +2006,96 @@ def suggest(
         table.add_row(r["key"], value_short, r["type"], proj_name)
 
     console.print(table)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CC SUB-GROUP — Claude Code active memory
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@cc_app.command(name="recall")
+def cc_recall(
+    query: str = typer.Argument("", help="What you're working on (focuses recall)"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name or ID"),
+    token_budget: int = typer.Option(2000, "--budget", "-b", help="Max tokens for the memory block"),
+    method: str = typer.Option("keyword", "--method", "-m", help="keyword | fts | embeddings"),
+    json_output: bool = typer.Option(False, "--json", help="Emit raw JSON instead of markdown"),
+):
+    """Recall token-budgeted, relevance-ranked memory for the current task."""
+    from neuralclaw.integrations.claude_code import memory as _mem
+    result = _mem.recall(
+        query=query or None, project=project,
+        token_budget=token_budget, method=method,
+    )
+    if json_output:
+        console.print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        console.print(_mem.render_markdown(result))
+
+
+@cc_app.command(name="remember")
+def cc_remember(
+    content: str = typer.Argument(..., help="The fact/decision/error to remember"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name or ID"),
+    item_type: Optional[str] = typer.Option(None, "--type", "-t", help="Override auto-detected type"),
+    key: Optional[str] = typer.Option(None, "--key", "-k", help="Stable key (default: inferred)"),
+    tags: Optional[str] = typer.Option(None, "--tags", help="Comma-separated tags"),
+):
+    """Store a fact into persistent memory (same store the MCP tool writes to)."""
+    from neuralclaw.integrations.claude_code import memory as _mem
+    project_id = _mem.resolve_project_id(project)
+    inferred_type, inferred_tags, inferred_key = _infer_type_from_content(content)
+    resolved_type = item_type or inferred_type
+    if key:
+        resolved_key = key
+    elif inferred_key and inferred_key != "note":
+        resolved_key = inferred_key
+    else:
+        resolved_key = content[:40].strip()
+    tag_list = [t.strip() for t in tags.split(",")] if tags else (inferred_tags or None)
+    item_id = add_context_item(
+        project_id=project_id, key=resolved_key, value=content,
+        item_type=resolved_type, tags=tag_list,
+    )
+    console.print(f"[green]✓[/green] Stored [bold]{resolved_type}[/bold] `{resolved_key}` "
+                  f"(project={project or 'global'})")
+    _log_verbose(f"id={item_id}")
+
+
+@cc_app.command(name="snapshot")
+def cc_snapshot(
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Project name or ID"),
+):
+    """Print a FreshApple markdown snapshot of active context."""
+    from neuralclaw.integrations.claude_code import memory as _mem
+    project_id = _mem.resolve_project_id(project)
+    console.print(generate_fresh_apple(project_id=project_id, project_name=project))
+
+
+@cc_app.command(name="install")
+def cc_install(
+    path: str = typer.Option(".", "--path", help="Project root to scaffold"),
+    project: Optional[str] = typer.Option(None, "--project", "-p", help="Default project to scope memory to"),
+    token_budget: int = typer.Option(1500, "--budget", "-b", help="SessionStart hook token budget"),
+    no_hook: bool = typer.Option(False, "--no-hook", help="Skip the SessionStart hook"),
+    no_mcp: bool = typer.Option(False, "--no-mcp", help="Skip the .mcp.json server"),
+    no_claude_md: bool = typer.Option(False, "--no-claude-md", help="Skip the CLAUDE.md note"),
+):
+    """Wire NeuralClaw into a Claude Code project (.mcp.json + hook + CLAUDE.md)."""
+    from neuralclaw.integrations.claude_code import scaffold
+    from pathlib import Path as _Path
+    results = scaffold.install(
+        root=_Path(path), project=project, token_budget=token_budget,
+        with_hook=not no_hook, with_mcp=not no_mcp, with_claude_md=not no_claude_md,
+    )
+    console.print(f"[bold cyan]NeuralClaw → Claude Code[/bold cyan] (root: {_Path(path).resolve()})")
+    for target, changed in results.items():
+        mark = "[green]written[/green]" if changed else "[dim]already configured[/dim]"
+        console.print(f"  {mark}  {target}")
+    console.print(
+        "\n[dim]Next: ensure the [bold]mcp[/bold] extra is installed "
+        "([bold]pip install \"neuralclaw-os[claude-code]\"[/bold]) and "
+        "restart Claude Code so it picks up the new server + hook.[/dim]"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
