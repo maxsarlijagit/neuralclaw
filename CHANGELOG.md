@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Claude Code active-memory integration** (`neuralclaw cc`): use NeuralClaw as persistent, token-optimized memory for Claude Code.
+  - `cc install` scaffolds `.mcp.json`, the `SessionStart` hook in `.claude/settings.json`, and a `CLAUDE.md` note (idempotent, merge-safe).
+  - `cc recall` / `cc remember` / `cc snapshot` CLI commands.
+  - MCP server (`neuralclaw-cc-memory`) exposing `memory_recall`, `memory_store`, `memory_get`, `memory_snapshot` tools.
+  - `SessionStart` hook (`neuralclaw-cc-hook`) auto-injects a token-budgeted memory block.
+  - New `claude-code` adapter and `[claude-code]` optional dependency (`mcp`).
+  - Memory layer applies relevance + recency + state ranking, token budgeting, stale flagging and progressive disclosure (`docs/CLAUDE_CODE.md`).
+
 ## [0.4.1] - 2026-04-27
 
 ### Fixed

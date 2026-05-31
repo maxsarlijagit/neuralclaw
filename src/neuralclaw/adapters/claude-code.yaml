@@ -1,0 +1,21 @@
+model: claude-code
+name: Claude Code
+context_format:
+  prepend: |
+    ## 🧠 NeuralClaw Memory
+  append: |
+    _End of recalled memory — prefer this over re-deriving context._
+# Active-memory window is small on purpose: inject a sharp, relevant slice.
+max_tokens: 2000
+supports_system: true
+supports_functions: true
+reveal_vars: false
+preferences:
+  length: short
+  style: technical
+  markdown: true
+constraints:
+  - "Recall before re-deriving known context"
+  - "Store new decisions, errors and variables as you make them"
+  - "Do not trust items flagged STALE or CONFLICT without verifying"
+  - "Respect the token budget — request more only when needed"
